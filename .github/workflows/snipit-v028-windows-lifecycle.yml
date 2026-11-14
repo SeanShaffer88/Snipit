@@ -200,13 +200,15 @@ jobs:
               $settings = $installedSettings
               $afterStartup = (Get-FileHash -LiteralPath $settings).Hash
               Write-Host (Run-Native $newSetup @('--uninstall','--to',$dest,'--json','--silent'))
-              $ownedFiles = @($receipt.files | ForEach-Object { $_.path }) + @('Snipit.exe','Uninstall.exe','seanpak-receipt.json')
+              $ownedFiles = @($receipt.files | ForEach-Object { $_.path }) + @('Snipit.exe','seanpak-receipt.json')
               foreach ($relative in $ownedFiles) {
                   if ($relative -and (Test-Path -LiteralPath (Join-Path $dest $relative))) { throw "Uninstall left $relative" }
               }
               if (Test-Path -LiteralPath $arpKey) { throw 'Uninstall left the Add/Remove Programs entry' }
               if ((Get-FileHash -LiteralPath $settings).Hash -ne $afterStartup) { throw 'Uninstall changed or removed portable settings' }
-              Write-Host 'Verified baseline install, in-place upgrade, portable-profile startup, Print Screen recovery and non-purge uninstall.'
+              $uninstallerRemains = Test-Path -LiteralPath (Join-Path $dest 'Uninstall.exe')
+              Write-Host "Uninstall.exe remains after non-purge uninstall: $uninstallerRemains (SeanPak leaves it outside the payload)."
+              Write-Host 'Verified baseline install, in-place upgrade, portable-profile startup, Print Screen recovery, payload and registration removal, and preserved settings.'
           } finally {
               if (Test-Path -LiteralPath $receiptPath) {
                   Write-Host (Run-Native $newSetup @('--uninstall','--to',$dest,'--json','--silent'))
