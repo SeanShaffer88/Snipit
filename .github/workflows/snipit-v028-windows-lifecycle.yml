@@ -86,7 +86,6 @@ jobs:
           $exe = Join-Path $dest 'Snipit.exe'
           $receiptPath = Join-Path $dest 'seanpak-receipt.json'
           $arpKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SeanPak-Snipit'
-          $keyboardKey = 'HKCU:\Control Panel\Keyboard'
           $keyboardValue = 'PrintScreenKeyForSnippingEnabled'
 
           function Run-Native($Program, [string[]]$Arguments) {
@@ -120,7 +119,7 @@ jobs:
           }
 
           function Read-PrintScreen {
-              Get-ItemPropertyValue -LiteralPath $keyboardKey -Name $keyboardValue -ErrorAction SilentlyContinue
+              [Microsoft.Win32.Registry]::GetValue('HKEY_CURRENT_USER\Control Panel\Keyboard', $keyboardValue, $null)
           }
 
           if (Test-Path -LiteralPath $arpKey) { throw 'Runner already has a Snipit installation' }
@@ -154,7 +153,8 @@ jobs:
               $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
               if ($receipt.app -ne 'Snipit' -or $receipt.version -ne $version -or
                   $receipt.mode -ne 'upgrade' -or $receipt.previousVersion -ne $baseVersion) {
-                  throw "Unexpected upgrade receipt: app=, version=, mode=, previous="
+                  throw ('Unexpected upgrade receipt: app={0}, version={1}, mode={2}, previous={3}' -f
+                      $receipt.app, $receipt.version, $receipt.mode, $receipt.previousVersion)
               }
               Assert-Version $version
               if ((Get-FileHash -LiteralPath $settings).Hash -ne $savedHash) { throw 'Upgrade changed portable settings bytes' }
