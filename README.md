@@ -17,6 +17,8 @@ While Snipit runs it switches off Windows' "Print Screen opens Snipping Tool" se
 
 ## Features
 
+The installer enables **Start at login** by default. To turn it off, clear **Start at login** in tray → **Settings** and select **Save**.
+
 | Mode | What it does |
 |---|---|
 | Element | UI Automation hit-test under the cursor. `Tab` next sibling, `PgUp`/`PgDn` parent/child, `Ctrl+Wheel` expand to container. Falls back to region when an app exposes no UIA. |

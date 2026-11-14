@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using Snipit.Core;
 
@@ -18,6 +19,8 @@ internal sealed class SettingsWindow : Window
     private readonly Button _wfManage = new() { Content = "Manage workflows…", Padding = new Thickness(8, 3, 8, 3) };
     private List<WorkflowDef> _workflows = new();
     private readonly ComboBox _format = new(), _target = new(), _delay = new(), _matte = new(), _effect = new();
+    private readonly CheckBox _startAtLogin = new() { Content = "Start at login" };
+    private readonly bool? _initialStartAtLogin;
     private readonly CheckBox _toasts = new() { Content = "Show notifications" };
     private readonly CheckBox _contrast = new() { Content = "High-contrast highlight" };
     private readonly CheckBox _toolKeys = new() { Content = "Single-key tool shortcuts in the editor" };
@@ -68,6 +71,17 @@ internal sealed class SettingsWindow : Window
         _delay.SelectedItem = prefs.DefaultDelaySeconds; _delay.ToolTip = "Capture countdown in seconds. Quick Mode bypasses it.";
         _matte.SelectedItem = prefs.MatteColor; _matte.ToolTip = "Fill for empty corners when monitors form an L-shape.";
         _effect.SelectedItem = AutoEffects.Sanitize(prefs.AutoEffect); _effect.ToolTip = "Applied automatically to every capture. Border draws a thin black frame; Grayscale converts to grey.";
+        var (startAtLogin, startupWarning) = StartAtLogin.Read();
+        _initialStartAtLogin = startAtLogin;
+        _startAtLogin.IsChecked = startAtLogin == true;
+        _startAtLogin.IsEnabled = startAtLogin.HasValue;
+        string startupHelp = startupWarning ?? (startAtLogin.HasValue
+            ? "Open Snipit automatically when you sign in to Windows."
+            : "Available for installed copies of Snipit.");
+        _startAtLogin.ToolTip = startupHelp;
+        ToolTipService.SetShowOnDisabled(_startAtLogin, true);
+        AutomationProperties.SetHelpText(_startAtLogin, startupHelp);
+        _error.Text = startupWarning ?? "";
         _toasts.IsChecked = prefs.ShowToasts; _toasts.ToolTip = "Balloon notifications after saving or on errors.";
         _toolKeys.IsChecked = prefs.EditorToolHotkeys; _toolKeys.ToolTip = "P pen, H highlight, A arrow, L connector, R rect, O ellipse, T text, N step, K callout, G stamp, B blur, S spotlight, M magnify, C crop, X cut out. Turn off if letter keys clash with your assistive technology.";
         _contrast.IsChecked = prefs.HighContrastHighlight; _contrast.ToolTip = "Thicker yellow highlight and opaque hint bars.";
@@ -91,7 +105,7 @@ internal sealed class SettingsWindow : Window
         Add("Fixed region width", _fixW); Add("Fixed region height", _fixH); Add("Interval (seconds)", _interval);
         Add("Full-screen target", _target); Add("Default delay (s)", _delay);
         Add("Gap fill", _matte); Add("Dimmer darkness", _dim); Add("Auto effect", _effect);
-        Add("", _toasts); Add("", _contrast); Add("", _toolKeys);
+        Add("", _startAtLogin); Add("", _toasts); Add("", _contrast); Add("", _toolKeys);
         Add("", _error);
 
         var ok = new Button { Content = "Save", IsDefault = true, Width = 80, Margin = new Thickness(4), ToolTip = "Apply and store settings." };
@@ -158,6 +172,14 @@ internal sealed class SettingsWindow : Window
         p.FixedWidth = fw; p.FixedHeight = fh; p.IntervalSeconds = iv;
         string? warning = _apply(p);
         if (warning is not null) problems.Add(warning);
+        bool startAtLogin = _startAtLogin.IsChecked == true;
+        if (_initialStartAtLogin is bool initial && startAtLogin != initial
+            && StartAtLogin.SetEnabled(startAtLogin) is { } startupWarning)
+        {
+            problems.Add(startupWarning);
+            _error.Text = "Settings saved, with notes: " + string.Join(" ", problems);
+            return;
+        }
         if (problems.Count > 0)
         {
             string msg = "Settings saved, with notes: " + string.Join(" ", problems);

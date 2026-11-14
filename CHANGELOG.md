@@ -2,6 +2,12 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Installed copies of Snipit start when you sign in to Windows by default. Clear **Start at login** in Settings to turn it off.
+
 ## [0.28.0] - 2026-11-14
 
 ### Added
