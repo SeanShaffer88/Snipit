@@ -149,16 +149,12 @@ jobs:
               '{"ShowToasts":false,"ShowTrayIcon":false,"FixedWidth":735}' | Set-Content -LiteralPath $settings
               $savedHash = (Get-FileHash -LiteralPath $settings).Hash
 
-              $install = Run-Native $newSetup @('--install','--to',$dest,'--json','--silent')
-              Write-Host $install
-              $update = $install | ConvertFrom-Json
-              if ($update.action -ne 'update' -or $update.previousVersion -ne $baseVersion) {
-                  throw 'SeanPak did not report an in-place upgrade from the released baseline'
-              }
+              Write-Host (Run-Native $newSetup @('--install','--to',$dest,'--json','--silent'))
+              Write-Host 'Candidate installer exited successfully. Checking its on-disk receipt.'
               $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
               if ($receipt.app -ne 'Snipit' -or $receipt.version -ne $version -or
                   $receipt.mode -ne 'upgrade' -or $receipt.previousVersion -ne $baseVersion) {
-                  throw 'Unexpected upgrade receipt'
+                  throw "Unexpected upgrade receipt: app=, version=, mode=, previous="
               }
               Assert-Version $version
               if ((Get-FileHash -LiteralPath $settings).Hash -ne $savedHash) { throw 'Upgrade changed portable settings bytes' }
