@@ -18,17 +18,100 @@ Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 public static class WindowsLabNative
 {
     [DllImport("user32.dll")] public static extern uint GetClipboardSequenceNumber();
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr previous, string className, string windowName);
+    private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr previous, string className, string windowName);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int capacity);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hwnd, StringBuilder text, int capacity);
     [DllImport("user32.dll")]
-    public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
-    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("user32.dll", SetLastError = true)]
     public static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
+
+    public static IntPtr FindOwnedMessageWindow(uint ownedPid, string expectedName, out string ownedWindows)
+    {
+        var names = new StringBuilder();
+        var text = new StringBuilder(256);
+        var className = new StringBuilder(256);
+        var messageOnly = new IntPtr(-3); // HWND_MESSAGE
+        var hwnd = IntPtr.Zero;
+        for (int attempt = 0; attempt < 4096; attempt++)
+        {
+            hwnd = FindWindowEx(messageOnly, hwnd, null, null);
+            if (hwnd == IntPtr.Zero) break;
+            uint pid;
+            GetWindowThreadProcessId(hwnd, out pid);
+            if (pid != ownedPid) continue;
+            text.Clear();
+            className.Clear();
+            GetWindowText(hwnd, text, text.Capacity);
+            GetClassName(hwnd, className, className.Capacity);
+            names.AppendFormat("[title={0}, class={1}]", text, className);
+            if (String.Equals(text.ToString(), expectedName, StringComparison.Ordinal))
+            {
+                ownedWindows = names.ToString();
+                return hwnd;
+            }
+        }
+        ownedWindows = names.ToString();
+        return IntPtr.Zero;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KeyboardInput
+    {
+        public ushort VirtualKey;
+        public ushort ScanCode;
+        public uint Flags;
+        public uint Time;
+        public UIntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MouseInput
+    {
+        public int X;
+        public int Y;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public UIntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct InputUnion
+    {
+        [FieldOffset(0)] public KeyboardInput Keyboard;
+        [FieldOffset(0)] public MouseInput Mouse;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Input
+    {
+        public uint Type;
+        public InputUnion Data;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint count, Input[] inputs, int elementSize);
+
+    public static void SendPrintScreen()
+    {
+        const ushort vkSnapshot = 0x2C;
+        var press = new Input { Type = 1 };
+        press.Data.Keyboard.VirtualKey = vkSnapshot;
+        var release = press;
+        release.Data.Keyboard.Flags = 2; // KEYEVENTF_KEYUP
+        if (SendInput(2, new[] { press, release }, Marshal.SizeOf(typeof(Input))) != 2)
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "Injecting Print Screen failed");
+    }
 }
 '@
 
@@ -317,29 +400,52 @@ function Test-CompactSettings([int]$OwnedPid) {
 }
 
 function Test-QuickCapture([int]$OwnedPid) {
-    $handle = [IntPtr]::Zero
-    for ($attempt = 0; $attempt -lt 50 -and $handle -eq [IntPtr]::Zero; $attempt++) {
-        $candidate = [WindowsLabNative]::FindWindowEx([IntPtr](-3), [IntPtr]::Zero, $null, 'SnipitMessageWindow')
-        $ownerPid = [uint32]0
-        if ($candidate -ne [IntPtr]::Zero) {
-            [void][WindowsLabNative]::GetWindowThreadProcessId($candidate, [ref]$ownerPid)
-            if ($ownerPid -ne $OwnedPid) { throw 'The registered window does not belong to the owned Snipit process.' }
-            $handle = $candidate
-        } else { Start-Sleep -Milliseconds 200 }
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        $startupLog = @(Get-ChildItem -LiteralPath $logPath -File -ErrorAction SilentlyContinue |
+            ForEach-Object { Get-Content -LiteralPath $_.FullName })
+        if ($startupLog -match 'Snipit started') { break }
+        Start-Sleep -Milliseconds 200
     }
-    if ($handle -eq [IntPtr]::Zero) { throw 'Quick Mode message-only window was unavailable.' }
-    if (![WindowsLabNative]::PostMessage($handle, 0x312, [IntPtr]1, [IntPtr]0)) {
-        throw 'Posting WM_HOTKEY to the owned Snipit process failed.'
+    if (!($startupLog -match 'Snipit started')) { throw 'Snipit did not finish startup before Quick Mode verification.' }
+
+    $handle = [IntPtr]::Zero
+    $ownedWindows = ''
+    $handle = [WindowsLabNative]::FindOwnedMessageWindow([uint32]$OwnedPid, 'SnipitMessageWindow', [ref]$ownedWindows)
+    Write-Host "Message-only windows owned by Snipit PID $OwnedPid $ownedWindows"
+    $before = [WindowsLabNative]::GetClipboardSequenceNumber()
+    if ($handle -ne [IntPtr]::Zero -and [WindowsLabNative]::PostMessage($handle, 0x312, [IntPtr]1, [IntPtr]0x2C0000)) {
+        $dispatch = 'WM_HOTKEY posted to owned Snipit window'
+    } else {
+        if ($startupLog -match 'RegisterHotKey\(PrintScreen\) failed') {
+            throw 'The owned message window was unavailable and Snipit could not register the Windows Print Screen hotkey.'
+        }
+        $dispatch = 'Print Screen injected into the isolated Windows session'
+        [WindowsLabNative]::SendPrintScreen()
     }
     $capture = $null
     for ($attempt = 0; $attempt -lt 75 -and !$capture; $attempt++) {
-        $capture = Get-ChildItem -LiteralPath $shots.FullName -Filter '*.jpg' -File | Select-Object -First 1
+        $capture = Get-ChildItem -LiteralPath $shots.FullName -Filter '*.png' -File | Select-Object -First 1
         if (!$capture) { Start-Sleep -Milliseconds 200 }
     }
-    if (!$capture) { throw 'The Quick Mode handler did not write a JPEG.' }
+    if (!$capture) { throw "The Quick Mode handler did not write a PNG after $dispatch." }
     Start-Sleep -Milliseconds 800
-    $size = Get-JpegSize $capture.FullName
+    $stream = [IO.File]::OpenRead($capture.FullName)
+    try {
+        $decoder = [Windows.Media.Imaging.BitmapDecoder]::Create($stream,
+            [Windows.Media.Imaging.BitmapCreateOptions]::PreservePixelFormat,
+            [Windows.Media.Imaging.BitmapCacheOption]::OnLoad)
+        if ($decoder -isnot [Windows.Media.Imaging.PngBitmapDecoder] -or $decoder.Frames.Count -ne 1) {
+            throw 'Quick Mode did not save a valid single-frame PNG.'
+        }
+        $size = "$($decoder.Frames[0].PixelWidth)x$($decoder.Frames[0].PixelHeight)"
+    } finally { $stream.Dispose() }
     Assert-ClipboardImage $size
+    $files = [Windows.Clipboard]::GetFileDropList()
+    if ([WindowsLabNative]::GetClipboardSequenceNumber() -eq $before -or $files.Count -ne 1 -or
+        [IO.Path]::GetDirectoryName($files[0]) -ne $clipboardStaging -or
+        [IO.Path]::GetExtension($files[0]) -ne '.jpg' -or (Get-JpegSize $files[0]) -ne $size) {
+        throw 'Quick Mode did not publish a new matching clipboard JPEG.'
+    }
     $messages = @(Get-ChildItem -LiteralPath $logPath -File | ForEach-Object { Get-Content -LiteralPath $_.FullName })
     if (!($messages -match 'Snipit started') -or !($messages -match 'capture backend:')) {
         throw 'The app log did not record the owned Quick Mode startup and capture.'
@@ -347,13 +453,13 @@ function Test-QuickCapture([int]$OwnedPid) {
     if ($messages -match 'Copied to clipboard:|Clipboard unavailable:|JPEG file paste unavailable:|Capture failed:') {
         throw "Quick Mode logged a capture-result notification: $($messages -match 'Copied to clipboard:|Clipboard unavailable:|JPEG file paste unavailable:|Capture failed:')"
     }
-    Write-Host "Owned WM_HOTKEY Quick Mode handler saved and copied a $size JPEG. AppHost notification log has no capture result message."
+    Write-Host "Quick Mode via $dispatch saved a $size PNG and copied a matching JPEG file. AppHost notification log has no capture result message."
     Write-Host 'This checks Quick Mode dispatch and the notification log. Physical Print Screen and normal picker input were outside this hosted check.'
 }
 
 @{
     OutputFolder = $shots.FullName
-    ImageFormat = 'jpg'
+    ImageFormat = if ($Scenario -eq 'Quick') { 'png' } else { 'jpg' }
     ShowToasts = $true
     ShowTrayIcon = $false
     FixedWidth = 735
