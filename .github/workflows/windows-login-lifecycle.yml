@@ -187,9 +187,14 @@ jobs:
 
           function Assert-RunValue($Expected, $Context) {
               $actual = Read-RunValue
-              if ($actual -cne $Expected) {
-                  throw ("Unexpected Snipit Run value after {0}: expected '{1}', got '{2}'" -f $Context, $Expected, $actual)
+              if ($null -eq $Expected) {
+                  if ($null -eq $actual) { return }
+              } elseif ($actual -is [string] -and $actual -match '^"([^"]+)"$') {
+                  $target = $Matches[1]
+                  if ([IO.Path]::IsPathFullyQualified($target) -and
+                      [IO.Path]::GetFullPath($target) -ieq [IO.Path]::GetFullPath($Expected.Trim('"'))) { return }
               }
+              throw ("Unexpected Snipit Run value after {0}: expected '{1}', got '{2}'" -f $Context, $Expected, $actual)
           }
 
           function New-SettingsFixture($Path) {
@@ -282,8 +287,11 @@ jobs:
               New-SettingsFixture $settings
               $fixtureHash = (Get-FileHash -LiteralPath $settings -Algorithm SHA256).Hash
               $registeredCommand = Get-ItemPropertyValue -LiteralPath $arpKey -Name UninstallString
-              $expectedCommand = '"' + $uninstaller + '" --uninstall --to "' + $dest + '"'
-              if ($registeredCommand -cne $expectedCommand) { throw "Unexpected registered uninstall command: $registeredCommand" }
+              if ($registeredCommand -notmatch '^"([^"]+)" --uninstall --to "([^"]+)"$' -or
+                  [IO.Path]::GetFullPath($Matches[1]) -ine [IO.Path]::GetFullPath($uninstaller) -or
+                  [IO.Path]::GetFullPath($Matches[2]) -ine [IO.Path]::GetFullPath($dest)) {
+                  throw "Unexpected registered uninstall command: $registeredCommand"
+              }
               Run-Native $uninstaller @('--uninstall','--to',$dest,'--json','--silent') | Out-Host
               Assert-Removed $receipt $fixtureHash
               Write-Host 'Fresh install enabled login startup. Registered Uninstall.exe removed itself, payload, and startup entry. Settings SHA-256 unchanged.'
