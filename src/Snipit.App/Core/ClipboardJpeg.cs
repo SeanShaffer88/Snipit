@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using Snipit.Core;
+using Snipit.Native;
 
 namespace Snipit;
 
@@ -18,7 +19,9 @@ internal static class ClipboardJpeg
     public static string Stage(BitmapSource image)
     {
         string directory = DirectoryPath;
-        Directory.CreateDirectory(directory);
+        var folder = Directory.CreateDirectory(directory);
+        if ((folder.Attributes & FileAttributes.ReparsePoint) != 0)
+            throw new IOException("The clipboard staging directory is redirected.");
         string stamp = DateTime.Now.ToString(TimestampFormat, CultureInfo.InvariantCulture);
         string path = Path.Combine(directory, $"{Prefix}{stamp}-{Guid.NewGuid():N}.jpg");
         return Exporter.Save(image, new Preferences { ImageFormat = "jpg" }, path);
@@ -29,7 +32,9 @@ internal static class ClipboardJpeg
         try
         {
             string directory = DirectoryPath;
-            if (!Directory.Exists(directory)) return;
+            if (!Directory.Exists(directory) || (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0) return;
+            uint sequence = NativeMethods.GetClipboardSequenceNumber();
+            if (sequence == 0) return;
             var clipboard = Clipboard.GetDataObject();
             var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (clipboard?.GetDataPresent(DataFormats.FileDrop, autoConvert: false) == true)
@@ -37,6 +42,7 @@ internal static class ClipboardJpeg
                 if (clipboard.GetData(DataFormats.FileDrop, autoConvert: false) is not string[] current) return;
                 foreach (string path in current) keep.Add(Path.GetFullPath(path));
             }
+            if (NativeMethods.GetClipboardSequenceNumber() != sequence) return;
             DateTime now = DateTime.UtcNow;
             foreach (string file in Directory.EnumerateFiles(directory, Prefix + "*"))
             {
@@ -47,6 +53,7 @@ internal static class ClipboardJpeg
                     !DateTime.TryParseExact(name.AsSpan(stampStart, TimestampFormat.Length), TimestampFormat,
                         CultureInfo.InvariantCulture, DateTimeStyles.None, out _) ||
                     !Guid.TryParseExact(name.AsSpan(guidStart, 32), "N", out _)) continue;
+                if (NativeMethods.GetClipboardSequenceNumber() != sequence) return;
                 string suffix = name[suffixStart..];
                 if (suffix == ".jpg")
                 {
@@ -60,6 +67,7 @@ internal static class ClipboardJpeg
                     }
                     else if (now - File.GetLastWriteTimeUtc(retired) >= Retention)
                     {
+                        if (NativeMethods.GetClipboardSequenceNumber() != sequence) return;
                         File.Delete(file);
                         File.Delete(retired);
                     }
