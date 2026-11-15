@@ -2,15 +2,16 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.28.3] - 2026-11-15
 
 ### Added
 
-- Captures can be pasted into File Explorer as JPEG files. Image-aware apps still receive PNG or bitmap data. The normal saved capture uses the format selected in Settings.
+- Press **Ctrl+V** in a File Explorer folder to paste a capture as a `.jpg` file. Image-aware apps still receive PNG or bitmap data, and the saved capture uses the format selected in Settings.
 
 ### Changed
 
-- Successful still captures no longer display a tray notification. Save and clipboard failures can still display a notification.
+- Routine successful screenshots are silent. Save and clipboard failures still display alerts when notifications are enabled.
+- Settings are grouped in a scrollable window with **Save** and **Cancel** always visible.
 
 ## [0.28.2] - 2026-11-14
 
