@@ -1,0 +1,336 @@
+name: Published Snipit Windows lifecycle
+
+on:
+  push:
+    branches: [verify/snipit-v0281-published]
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      LAB_VERSION: 0.28.1
+    steps:
+      - name: Download and verify the published release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
+              throw 'Use a GitHub-hosted Windows runner for this test.'
+          }
+          $repo = 'SeanShaffer88/Snipit'
+          $tag = "v$env:LAB_VERSION"
+          $setup = "Snipit-$tag-x64-Setup.exe"
+          $portable = "Snipit-$tag-x64-Portable.zip"
+          $manifest = 'SHA256SUMS.txt'
+          $releaseJson = gh api "repos/$repo/releases/tags/$tag"
+          if ($LASTEXITCODE -ne 0) { throw "Could not read release metadata for $repo $tag" }
+          $release = $releaseJson | ConvertFrom-Json
+          if ($release.tag_name -cne $tag -or $release.draft -or $release.prerelease -or !$release.published_at) {
+              throw "$repo $tag is not a published stable release"
+          }
+          $names = @($setup, $portable, $manifest)
+          if (@($release.assets).Count -ne $names.Count) { throw 'Unexpected release asset count' }
+          $assets = @{}
+          foreach ($name in $names) {
+              $matched = @($release.assets | Where-Object name -CEQ $name)
+              if ($matched.Count -ne 1 -or $matched[0].state -ne 'uploaded' -or $matched[0].size -le 0 -or
+                  $matched[0].digest -notmatch '^sha256:([0-9a-f]{64})$') {
+                  throw "Missing uploaded asset or SHA-256 digest for $name"
+              }
+              $assets[$name] = $matched[0]
+          }
+          if (Test-Path -LiteralPath 'dist-seanpak') { throw 'Release download directory already exists' }
+          gh release download $tag --repo $repo --dir dist-seanpak --pattern $setup --pattern $portable --pattern $manifest
+          if ($LASTEXITCODE -ne 0) { throw "Could not download all release assets for $tag" }
+          foreach ($name in $names) {
+              $file = Get-Item -LiteralPath (Join-Path 'dist-seanpak' $name)
+              $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+              if ($file.Length -ne $assets[$name].size -or "sha256:$hash" -ine $assets[$name].digest) {
+                  throw "Downloaded asset size or SHA-256 mismatch for $name"
+              }
+              Write-Host "Verified GitHub digest: $hash  $name"
+          }
+
+      - name: Test installation, startup Settings, and both uninstall entry points
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
+              throw 'Use a GitHub-hosted Windows runner for this test.'
+          }
+          $lab = Join-Path $env:RUNNER_TEMP "snipit-login-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          New-Item -ItemType Directory -ErrorAction Stop -Path $lab | Out-Null
+          $dest = Join-Path $lab 'installed Snipit'
+          $exe = Join-Path $dest 'Snipit.exe'
+          $uninstaller = Join-Path $dest 'Uninstall.exe'
+          $receiptPath = Join-Path $dest 'seanpak-receipt.json'
+          $expectedRun = '"' + $exe + '"'
+          $arpKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SeanPak-Snipit'
+          $runKey = 'HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run'
+          $keyboardKey = 'HKEY_CURRENT_USER\Control Panel\Keyboard'
+          $printScreen = 'PrintScreenKeyForSnippingEnabled'
+          $uiDriver = Join-Path $lab 'Test-OwnedSettings.ps1'
+          $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          $newSetup = (Resolve-Path "dist-seanpak/Snipit-v$env:LAB_VERSION-x64-Setup.exe").Path
+          $zip = (Resolve-Path "dist-seanpak/Snipit-v$env:LAB_VERSION-x64-Portable.zip").Path
+          $oldSetup = Join-Path $lab 'Snipit-v0.28.0-x64-Setup.exe'
+          $settings = Join-Path $dest 'data/settings.json'
+
+          @'
+          param(
+              [int]$OwnedPid,
+              [ValidateSet('Enabled', 'Disabled')][string]$Availability,
+              [ValidateSet('On', 'Off')][string]$Expected,
+              [ValidateSet('Inspect', 'ToggleAndSave')][string]$Operation
+          )
+          $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+          $root = [System.Windows.Automation.AutomationElement]::RootElement
+          $windowName = [System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::NameProperty, 'Snipit settings')
+          $windowPid = [System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $OwnedPid)
+          $windowCondition = [System.Windows.Automation.AndCondition]::new($windowName, $windowPid)
+          $window = $null
+          for ($attempt = 0; $attempt -lt 80 -and !$window; $attempt++) {
+              $window = $root.FindFirst([System.Windows.Automation.TreeScope]::Children, $windowCondition)
+              if (!$window) { Start-Sleep -Milliseconds 250 }
+          }
+          if (!$window) { throw "Settings window not found for owned Snipit process $OwnedPid" }
+
+          function Find-Control($Name, $ControlType) {
+              $byName = [System.Windows.Automation.PropertyCondition]::new(
+                  [System.Windows.Automation.AutomationElement]::NameProperty, $Name)
+              $byType = [System.Windows.Automation.PropertyCondition]::new(
+                  [System.Windows.Automation.AutomationElement]::ControlTypeProperty, $ControlType)
+              $item = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+                  [System.Windows.Automation.AndCondition]::new($byName, $byType))
+              if (!$item) { throw "Settings control not found: $Name" }
+              $item
+          }
+
+          $checkBox = Find-Control 'Start at login' ([System.Windows.Automation.ControlType]::CheckBox)
+          $expectEnabled = $Availability -eq 'Enabled'
+          $toggle = $checkBox.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+          $state = $toggle.Current.ToggleState.ToString()
+          if ($checkBox.Current.IsEnabled -ne $expectEnabled -or $state -ne $Expected) {
+              throw "Unexpected Start at login control: enabled=$($checkBox.Current.IsEnabled), checked=$state"
+          }
+          if ($Operation -eq 'ToggleAndSave') {
+              $toggle.Toggle()
+              if ($toggle.Current.ToggleState.ToString() -eq $Expected) { throw 'Check box did not toggle' }
+              $save = Find-Control 'Save' ([System.Windows.Automation.ControlType]::Button)
+              $save.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+              $windowClosed = $false
+              for ($attempt = 0; $attempt -lt 40 -and !$windowClosed; $attempt++) {
+                  $windowClosed = !$root.FindFirst([System.Windows.Automation.TreeScope]::Children, $windowCondition)
+                  if (!$windowClosed) { Start-Sleep -Milliseconds 250 }
+              }
+              if (!$windowClosed) { throw 'Settings did not close after Save' }
+          }
+          Write-Output "Owned Snipit Settings: enabled=$expectEnabled, initial checked=$Expected, $Operation."
+          '@ | Set-Content -LiteralPath $uiDriver
+
+          function Run-Native([string]$Program, [string[]]$Arguments) {
+              $info = [Diagnostics.ProcessStartInfo]::new($Program)
+              $info.UseShellExecute = $false
+              $info.RedirectStandardOutput = $true
+              $info.RedirectStandardError = $true
+              $info.CreateNoWindow = $true
+              foreach ($argument in $Arguments) { $info.ArgumentList.Add($argument) }
+              $child = [Diagnostics.Process]::Start($info)
+              try {
+                  $stdout = $child.StandardOutput.ReadToEndAsync()
+                  $stderr = $child.StandardError.ReadToEndAsync()
+                  if (!$child.WaitForExit(120000)) {
+                      $child.Kill($true)
+                      throw "$Program timed out"
+                  }
+                  if ($child.ExitCode -ne 0) {
+                      throw "$Program exited $($child.ExitCode). $($stdout.Result) $($stderr.Result)"
+                  }
+                  $stdout.Result
+              } finally { $child.Dispose() }
+          }
+
+          function Assert-Version($Program, $Expected) {
+              $actual = (Run-Native $Program @('--version')).Trim()
+              if ($actual -ne "Snipit $Expected") { throw "Unexpected CLI version: $actual" }
+          }
+
+          function Read-RunValue {
+              [Microsoft.Win32.Registry]::GetValue($runKey, 'Snipit', $null)
+          }
+
+          function Assert-RunValue($Expected, $Context) {
+              $actual = Read-RunValue
+              if ($null -eq $Expected) {
+                  if ($null -eq $actual) { return }
+              } elseif ($actual -is [string] -and $actual -match '^"([^"]+)"$') {
+                  $target = $Matches[1]
+                  if ([IO.Path]::IsPathFullyQualified($target) -and
+                      [IO.Path]::GetFullPath($target) -ieq [IO.Path]::GetFullPath($Expected.Trim('"'))) { return }
+              }
+              throw ("Unexpected Snipit Run value after {0}: expected '{1}', got '{2}'" -f $Context, $Expected, $actual)
+          }
+
+          function New-SettingsFixture($Path) {
+              New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path) | Out-Null
+              '{"ShowToasts":false,"ShowTrayIcon":false,"FixedWidth":735}' | Set-Content -LiteralPath $Path
+          }
+
+          function Assert-SettingsHash($Path, $Expected) {
+              $actual = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+              if ($actual -ne $Expected) { throw "Settings bytes changed: $Path" }
+          }
+
+          function Read-Receipt {
+              Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+          }
+
+          function Assert-Removed($Receipt, $SettingsHash) {
+              $cleanupResidue = @()
+              for ($attempt = 0; $attempt -lt 125; $attempt++) {
+                  $cleanupResidue = @(Get-ChildItem -LiteralPath $dest -Force -File -Filter '.seanpak-uninstall-*.exe')
+                  if (!(Test-Path -LiteralPath $uninstaller) -and !$cleanupResidue.Count) { break }
+                  Start-Sleep -Milliseconds 200
+              }
+              if ($cleanupResidue.Count) { throw "Uninstall left renamed cleanup files: $($cleanupResidue.Name -join ', ')" }
+              $owned = @($Receipt.files | ForEach-Object { $_.path }) + @('Snipit.exe','Uninstall.exe','seanpak-receipt.json')
+              foreach ($relative in $owned) {
+                  if ($relative -and (Test-Path -LiteralPath (Join-Path $dest $relative))) { throw "Uninstall left $relative" }
+              }
+              if (Test-Path -LiteralPath $arpKey) { throw 'Uninstall left the Windows app registration' }
+              Assert-RunValue $null 'uninstall'
+              Assert-SettingsHash $settings $SettingsHash
+          }
+
+          function Test-LoginSettings($Program, $Profile, [bool]$Enabled, $Expected, $Operation) {
+              $prior = [Microsoft.Win32.Registry]::GetValue($keyboardKey, $printScreen, $null)
+              $process = Start-Process -FilePath $Program -WindowStyle Hidden -PassThru
+              try {
+                  $ready = $false
+                  for ($attempt = 0; $attempt -lt 50 -and !$ready; $attempt++) {
+                      if ($process.HasExited) { throw "Snipit startup exited $($process.ExitCode)" }
+                      Start-Sleep -Milliseconds 200
+                      try { $prefs = Get-Content -LiteralPath $Profile -Raw | ConvertFrom-Json }
+                      catch [System.IO.IOException] { continue }
+                      $ready = $prefs.PrintScreenPriorRecorded -eq $true -and
+                          [Microsoft.Win32.Registry]::GetValue($keyboardKey, $printScreen, $null) -eq 0
+                  }
+                  if (!$ready -or $prefs.FixedWidth -ne 735 -or $prefs.ShowToasts -ne $false) {
+                      throw 'Snipit did not start with the expected profile'
+                  }
+                  Run-Native $Program @() | Out-Host
+                  $availability = if ($Enabled) { 'Enabled' } else { 'Disabled' }
+                  Run-Native $windowsPowerShell @('-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass',
+                      '-File', $uiDriver, '-OwnedPid', "$($process.Id)", '-Availability', $availability,
+                      '-Expected', $Expected, '-Operation', $Operation) | Out-Host
+              } finally {
+                  if (!$process.HasExited) { Stop-Process -Id $process.Id -Force; $process.WaitForExit() }
+                  $process.Dispose()
+                  Run-Native $Program @('--restore-printscreen') | Out-Host
+                  if ([Microsoft.Win32.Registry]::GetValue($keyboardKey, $printScreen, $null) -ne $prior) {
+                      throw 'Print Screen setting was not restored after the startup smoke test'
+                  }
+              }
+          }
+
+          if ((Test-Path -LiteralPath $arpKey) -or $null -ne (Read-RunValue)) {
+              throw 'Runner already has a registered Snipit installation or startup entry'
+          }
+          if (Get-Process -Name Snipit,SharpSnip -ErrorAction SilentlyContinue) { throw 'Snipit or SharpSnip is running' }
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest 'https://github.com/SeanShaffer88/Snipit/releases/download/v0.28.0/Snipit-v0.28.0-x64-Setup.exe' -OutFile $oldSetup
+          $oldHash = (Get-FileHash -LiteralPath $oldSetup -Algorithm SHA256).Hash
+          if ($oldHash -ne 'da76c9f282fa79a253dfa72a5bc3166175a8dae79c2f72da3a629e5717014e02') {
+              throw "Published v0.28.0 baseline installer SHA-256 mismatch: $oldHash"
+          }
+          $checksums = Get-Content dist-seanpak/SHA256SUMS.txt
+          if ($checksums.Count -ne 2) { throw 'Unexpected package checksum count' }
+          foreach ($package in @($newSetup, $zip)) {
+              $hash = (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash
+              $name = Split-Path -Leaf $package
+              if ($checksums -notcontains "$hash  $name") { throw "Published package SHA-256 mismatch: $name" }
+              Write-Host "$hash  $name"
+          }
+          $setupHash = (Get-FileHash -LiteralPath $newSetup -Algorithm SHA256).Hash
+
+          try {
+              Run-Native $newSetup @('--install','--to',$dest,'--json','--silent') | Out-Host
+              Assert-Version $exe $env:LAB_VERSION
+              Assert-RunValue $expectedRun 'fresh install'
+              $receipt = Read-Receipt
+              if ($receipt.app -ne 'Snipit' -or $receipt.version -ne $env:LAB_VERSION) { throw 'Wrong fresh install receipt' }
+              New-SettingsFixture $settings
+              $fixtureHash = (Get-FileHash -LiteralPath $settings -Algorithm SHA256).Hash
+              $registeredCommand = Get-ItemPropertyValue -LiteralPath $arpKey -Name UninstallString
+              if ($registeredCommand -notmatch '^"([^"]+)" --uninstall --to "([^"]+)"$' -or
+                  [IO.Path]::GetFullPath($Matches[1]) -ine [IO.Path]::GetFullPath($uninstaller) -or
+                  [IO.Path]::GetFullPath($Matches[2]) -ine [IO.Path]::GetFullPath($dest)) {
+                  throw "Unexpected registered uninstall command: $registeredCommand"
+              }
+              Run-Native $uninstaller @('--uninstall','--to',$dest,'--json','--silent') | Out-Host
+              Assert-Removed $receipt $fixtureHash
+              Write-Host 'Fresh install enabled login startup. Registered Uninstall.exe removed itself, payload, and startup entry. Settings SHA-256 unchanged.'
+
+              Run-Native $oldSetup @('--install','--to',$dest,'--json','--silent') | Out-Host
+              Assert-Version $exe '0.28.0'
+              Assert-RunValue $null 'v0.28.0 baseline install'
+              Run-Native $newSetup @('--install','--to',$dest,'--json','--silent') | Out-Host
+              Assert-Version $exe $env:LAB_VERSION
+              $receipt = Read-Receipt
+              if ($receipt.app -ne 'Snipit' -or $receipt.version -ne $env:LAB_VERSION -or
+                  $receipt.mode -ne 'upgrade' -or $receipt.previousVersion -ne '0.28.0') {
+                  throw "Wrong upgrade receipt: $($receipt | ConvertTo-Json -Compress)"
+              }
+              Assert-SettingsHash $settings $fixtureHash
+              Assert-RunValue $expectedRun 'upgrade from v0.28.0'
+
+              Test-LoginSettings $exe $settings $true 'On' 'ToggleAndSave'
+              Assert-RunValue $null 'turning startup off in Settings'
+              Run-Native $newSetup @('--install','--to',$dest,'--json','--silent') | Out-Host
+              Assert-RunValue $null 'reinstall after Settings opt-out'
+              Test-LoginSettings $exe $settings $true 'Off' 'ToggleAndSave'
+              Assert-RunValue $expectedRun 'turning startup on in Settings after restarting Snipit'
+
+              $portable = Join-Path $lab 'portable Snipit'
+              Expand-Archive -LiteralPath $zip -DestinationPath $portable
+              $portableExe = Join-Path $portable 'Snipit.exe'
+              $portableSettings = Join-Path $portable 'data/settings.json'
+              New-SettingsFixture $portableSettings
+              Assert-Version $portableExe $env:LAB_VERSION
+              Test-LoginSettings $portableExe $portableSettings $false 'Off' 'Inspect'
+              Assert-RunValue $expectedRun 'portable launch and Settings inspection'
+
+              $retainedHash = (Get-FileHash -LiteralPath $settings -Algorithm SHA256).Hash
+              $receipt = Read-Receipt
+              Run-Native $newSetup @('--uninstall','--to',$dest,'--json','--silent') | Out-Host
+              Assert-Removed $receipt $retainedHash
+              if ((Get-FileHash -LiteralPath $newSetup -Algorithm SHA256).Hash -ne $setupHash) {
+                  throw 'External Setup changed during uninstall'
+              }
+              Write-Host 'v0.28.0 upgrade, Settings save for login off and on, opt-out through reinstall, portable Settings, and external Setup uninstall passed. Settings SHA-256 unchanged by uninstall.'
+
+              $unrelated = Join-Path $lab 'unrelated owned fixture'
+              New-Item -ItemType Directory -Path $unrelated | Out-Null
+              $foreignUninstaller = Join-Path $unrelated 'Uninstall.exe'
+              'Unrelated fixture. This file is never executed.' | Set-Content -LiteralPath $foreignUninstaller
+              $foreignHash = (Get-FileHash -LiteralPath $foreignUninstaller -Algorithm SHA256).Hash
+              Run-Native $newSetup @('--uninstall','--to',$unrelated,'--json','--silent') | Out-Host
+              if ((Get-FileHash -LiteralPath $foreignUninstaller -Algorithm SHA256).Hash -ne $foreignHash) {
+                  throw 'External Setup changed an unrelated Uninstall.exe without a Snipit receipt'
+              }
+              Write-Host 'External Setup preserved the unrelated Uninstall.exe fixture.'
+          } finally {
+              if (Test-Path -LiteralPath $receiptPath) {
+                  Run-Native $newSetup @('--uninstall','--to',$dest,'--json','--silent') | Out-Host
+              }
+          }
