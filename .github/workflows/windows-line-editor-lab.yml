@@ -1,0 +1,44 @@
+name: Windows line editor integration
+
+on:
+  push:
+    branches: [verify/snipit-line-windows]
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build and run Snipit self-tests
+        shell: pwsh
+        run: |
+          dotnet build Snipit.sln -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Snipit build failed' }
+          dotnet run --project tests/Snipit.SelfTest -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Snipit self-tests failed' }
+
+      - name: Draw, edit, undo and save lines in the owned WPF editor
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
+              throw 'Native input may only be exercised on a disposable hosted Windows runner.'
+          }
+          $lab = Join-Path $env:RUNNER_TEMP "snipit-line-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          New-Item -ItemType Directory -Path $lab | Out-Null
+          dotnet build tools/LineEditorWindowsLab/LineEditorWindowsLab.csproj -c Release -o "$lab/program"
+          if ($LASTEXITCODE -ne 0) { throw 'Line editor fixture build failed' }
+          New-Item -ItemType Directory -Path "$lab/program/data" | Out-Null
+          & "$lab/program/LineEditorWindowsLab.exe" "$lab/exports"
+          if ($LASTEXITCODE -ne 0) { throw "Line editor fixture exited $LASTEXITCODE" }
