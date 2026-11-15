@@ -49,6 +49,8 @@ Paste a capture into an image-aware app as PNG or bitmap, or paste into a File E
 
 The menu is a bar that slides down from the top of the screen — click a mode, or use its key: `E` element, `R` region, `W` window, `S` fixed-size region, `H` freehand, `F` all monitors, `D` this monitor, `1`..`9` monitor N, `Space` cycles delay, `Esc` cancels. Right-click acts as `Esc`. A preset region (Settings) can be captured from the tray menu.
 
+In the editor, choose **Line** or press `I` with single-key shortcuts enabled. Pick a colour and width, then drag to draw. In Line mode, click a line and drag either endpoint. Use the editor's Undo and Redo controls to step through drawing and endpoint edits.
+
 Output folder, format (PNG/JPEG/BMP/GIF/TIFF/PDF), delay and more are in tray → Settings. Print Screen is Snipit's only global hotkey. It opens the capture toolbox by default. Enable **Quick Mode** in the tray menu to capture the target selected under **Settings → Full-screen target** immediately, with no countdown. Snipit copies and saves the capture and runs its configured capture workflow. Quitting Snipit restores the Windows Print Screen setting. Captures land in your Pictures folder unless you pick another, its windows follow the TesselGUI revision 3 (Carmine) design standard, and the tray icon can be hidden from its own menu — running Snipit again brings it back. Settings and logs use an existing `%APPDATA%\SharpSnip` directory, including any saved Print Screen recovery record. Fresh profiles use `%APPDATA%\Snipit`. A `data` folder beside `Snipit.exe` takes precedence for portable copies. Keep that folder alongside the new executable when switching a portable copy.
 
 ### Switching from SharpSnip

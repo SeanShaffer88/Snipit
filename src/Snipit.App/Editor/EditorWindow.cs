@@ -14,9 +14,9 @@ using Snipit.Native;
 namespace Snipit;
 
 /// <summary>Mini editor (§9). Annotations live in a canvas above the image; undo/redo is an action stack.</summary>
-internal sealed class EditorWindow : Window
+internal sealed partial class EditorWindow : Window
 {
-    private enum Tool { Pen, Highlighter, Arrow, Connector, Rect, Ellipse, Text, Step, Callout, Stamp, Blur, Spotlight, Loupe, Crop, Cut }
+    private enum Tool { Pen, Highlighter, Arrow, Line, Connector, Rect, Ellipse, Text, Step, Callout, Stamp, Blur, Spotlight, Loupe, Crop, Cut }
 
     private interface IEdit { void Undo(); void Redo(); long Cost { get; } }
 
@@ -65,13 +65,14 @@ internal sealed class EditorWindow : Window
 
     private static readonly Dictionary<Key, Tool> ToolKeys = new()
     {
-        [Key.P] = Tool.Pen, [Key.H] = Tool.Highlighter, [Key.A] = Tool.Arrow, [Key.L] = Tool.Connector, [Key.R] = Tool.Rect, [Key.O] = Tool.Ellipse,
+        [Key.P] = Tool.Pen, [Key.H] = Tool.Highlighter, [Key.A] = Tool.Arrow, [Key.I] = Tool.Line, [Key.L] = Tool.Connector, [Key.R] = Tool.Rect, [Key.O] = Tool.Ellipse,
         [Key.T] = Tool.Text, [Key.N] = Tool.Step, [Key.B] = Tool.Blur, [Key.S] = Tool.Spotlight, [Key.M] = Tool.Loupe, [Key.K] = Tool.Callout, [Key.G] = Tool.Stamp, [Key.C] = Tool.Crop, [Key.X] = Tool.Cut,
     };
     private readonly Dictionary<Tool, ToggleButton> _toolCells = new();
 
-    private void SelectTool(Tool t, ToggleButton cell)
+    private void SelectTool(Tool t, ToggleButton? cell)
     {
+        if (_tool != t) ClearLineSelection();
         _tool = t;
         foreach (var kv in _toolCells) kv.Value.IsChecked = kv.Value == cell;
     }
@@ -110,7 +111,12 @@ internal sealed class EditorWindow : Window
         _surface.Children.Add(_image); _surface.Children.Add(_layer);
         RenderOptions.SetBitmapScalingMode(_image, BitmapScalingMode.NearestNeighbor);
         SetBase(_base);
-        root.Children.Add(new Viewbox { Stretch = Stretch.Uniform, Child = _surface, Margin = new Thickness(8), Focusable = false });
+        var preview = new Grid();
+        preview.Children.Add(_surface);
+        preview.Children.Add(_lineOverlay);
+        var view = new Viewbox { Stretch = Stretch.Uniform, Child = preview, Margin = new Thickness(8), Focusable = false };
+        view.SizeChanged += (_, _) => UpdateLineHandles();
+        root.Children.Add(view);
         root.Background = _chrome.CanvasBg;
         Content = root;
         if (!SystemParameters.HighContrast) Loaded += (_, _) => TesselTheme.Apply(this);
@@ -119,7 +125,7 @@ internal sealed class EditorWindow : Window
         _layer.MouseLeftButtonDown += OnDown;
         _layer.MouseMove += OnMove;
         _layer.MouseLeftButtonUp += OnUp;
-        _layer.LostMouseCapture += (_, _) => ClearConnectorDraft();
+        _layer.LostMouseCapture += (_, _) => { ClearConnectorDraft(); CancelLineGesture(); };
         _openFolder.Click += (_, _) => { if (_savedPath is not null) Process.Start("explorer.exe", $"/select,\"{_savedPath}\""); };
         _copyPath.Click += (_, _) => { if (_savedPath is not null) { try { Clipboard.SetText(_savedPath); _status.Text = "Path copied."; } catch (Exception) { _status.Text = "Clipboard busy."; } } };
 
@@ -131,13 +137,23 @@ internal sealed class EditorWindow : Window
         PreviewKeyDown += (_, e) =>
         {
             if (_editing is not null || _busy) return;
-            if (e.Key == Key.Escape) { Close(); e.Handled = true; return; }
+            if (e.Key == Key.Escape)
+            {
+                if (HasLineGesture)
+                {
+                    CancelLineGesture();
+                    _layer.ReleaseMouseCapture();
+                }
+                else if (_selectedLine is not null) ClearLineSelection();
+                else Close();
+                e.Handled = true;
+                return;
+            }
             if (!_prefs.EditorToolHotkeys) return;
             if (Keyboard.Modifiers != ModifierKeys.None || Keyboard.FocusedElement is TextBox) return;
             if (ToolKeys.TryGetValue(e.Key, out var t))
             {
-                if (_toolCells.TryGetValue(t, out var cell)) SelectTool(t, cell);
-                else { _tool = t; foreach (var c in _toolCells.Values) c.IsChecked = false; }
+                SelectTool(t, _toolCells.GetValueOrDefault(t));
                 e.Handled = true;
             }
         };
@@ -172,8 +188,8 @@ internal sealed class EditorWindow : Window
         var c = _chrome;
         // ---- tools row ----
         var tools = new DockPanel { Margin = new Thickness(6, 4, 6, 4) };
-        var left = new StackPanel { Orientation = Orientation.Horizontal };
-        var right = new StackPanel { Orientation = Orientation.Horizontal };
+        var left = new WrapPanel();
+        var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
         DockPanel.SetDock(right, Dock.Right);
         void AddTool(string label, string icon, string key, Tool t, string tip)
         {
@@ -185,6 +201,7 @@ internal sealed class EditorWindow : Window
         AddTool("Pen", "pen", "P", Tool.Pen, "Freehand pen. Drag on the image.");
         AddTool("Highlight", "highlighter", "H", Tool.Highlighter, "Translucent wide marker.");
         AddTool("Arrow", "arrow", "A", Tool.Arrow, "Drag from tail to head.");
+        AddTool("Line", "line", "I", Tool.Line, "Drag to draw a straight line. Click a line to select it and drag either endpoint to adjust it.");
         AddTool("Connector", "connector", "L", Tool.Connector, "Drag: a right-angle connector with a dot at each end. Good for linking two callouts or steps.");
         AddTool("Rect", "rect", "R", Tool.Rect, "Drag a rectangle outline.");
         AddTool("Ellipse", "ellipse", "O", Tool.Ellipse, "Drag an ellipse outline.");
@@ -241,8 +258,7 @@ internal sealed class EditorWindow : Window
             foreach (var (name, glyph) in new[] { ("Check", "\u2713"), ("Cross", "\u2717"), ("Question", "?"), ("Exclamation", "!"), ("Star", "\u2605") })
                 item($"{glyph}  {name}", $"Click the image to drop a {name.ToLowerInvariant()} stamp in the chosen colour.", () =>
                 {
-                    _stampGlyph = glyph; _tool = Tool.Stamp;
-                    foreach (var cell in _toolCells.Values) cell.IsChecked = false;
+                    _stampGlyph = glyph; SelectTool(Tool.Stamp, null);
                     _status.Text = $"Stamp: {name}. Click the image.";
                 });
         });
@@ -364,6 +380,7 @@ internal sealed class EditorWindow : Window
 
     private void SetBase(BitmapSource src)
     {
+        ClearLineSelection();
         _base = src;
         _image.Source = src;
         _image.Width = src.PixelWidth; _image.Height = src.PixelHeight;
@@ -394,6 +411,7 @@ internal sealed class EditorWindow : Window
     {
         if (_editing is not null) { CommitText(); return; }
         _start = e.GetPosition(_layer);
+        if (_tool == Tool.Line) { BeginLineGesture(_start); return; }
         if (!_layer.CaptureMouse()) return;
         switch (_tool)
         {
@@ -442,6 +460,7 @@ internal sealed class EditorWindow : Window
     {
         if (!_layer.IsMouseCaptured) return;
         var p = Clamp(e.GetPosition(_layer));
+        if (HasLineGesture) { UpdateLineGesture(p); return; }
         if (_stroke is not null) { _stroke.Points.Add(p); return; }
         if (_connectorDraft is not null) { _connectorDraft.Data = ConnectorGeometry(_start, p); return; }
         if (_arrowShaft is not null) { _arrowShaft.X2 = p.X; _arrowShaft.Y2 = p.Y; return; }
@@ -464,6 +483,12 @@ internal sealed class EditorWindow : Window
     private void OnUp(object sender, MouseButtonEventArgs e)
     {
         if (!_layer.IsMouseCaptured) return;
+        if (HasLineGesture)
+        {
+            FinishLineGesture(Clamp(e.GetPosition(_layer)));
+            _layer.ReleaseMouseCapture();
+            return;
+        }
         bool connecting = _connectorDraft is not null;
         ClearConnectorDraft();
         _layer.ReleaseMouseCapture();
@@ -618,6 +643,7 @@ internal sealed class EditorWindow : Window
     private async Task RunExclusiveEditAsync(Func<Task> edit)
     {
         if (_busy) { _status.Text = "Still working on the last edit…"; return; }
+        ClearLineSelection();
         var oldCursor = Cursor;
         var root = Content as UIElement;
         bool wasEnabled = root?.IsEnabled ?? true;
@@ -825,8 +851,8 @@ internal sealed class EditorWindow : Window
 
     // ---- undo / output -------------------------------------------------------------------------
 
-    private void DoUndo() { if (_undo.Count == 0) return; var e = _undo.Pop(); e.Undo(); _redo.Push(e); }
-    private void DoRedo() { if (_redo.Count == 0) return; var e = _redo.Pop(); e.Redo(); _undo.Push(e); }
+    private void DoUndo() { ClearLineSelection(); if (_undo.Count == 0) return; var e = _undo.Pop(); e.Undo(); _redo.Push(e); }
+    private void DoRedo() { ClearLineSelection(); if (_redo.Count == 0) return; var e = _redo.Pop(); e.Redo(); _undo.Push(e); }
 
     /// <summary>Base image + annotations as one bitmap at the image's native pixel size.</summary>
     private async Task CopyTextAsync()
@@ -959,6 +985,7 @@ internal sealed class EditorWindow : Window
 
     private void CopyImage()
     {
+        if (HasLineGesture) return;
         _status.Text = ClipboardWriter.SetImage(Flatten()) switch
         {
             ImageClipboardResult.ImageAndJpeg => "Copied to clipboard.",
@@ -969,6 +996,7 @@ internal sealed class EditorWindow : Window
 
     private void Save()
     {
+        if (HasLineGesture) return;
         try
         {
             _savedPath = Exporter.Save(Flatten(), _prefs);

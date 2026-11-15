@@ -2,6 +2,12 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Draw a straight line in the editor with **Line** (`I`). Use the existing stroke colour and width controls, select a line to drag either endpoint, and undo or redo each adjustment.
+
 ## [0.28.3] - 2026-11-15
 
 ### Added
