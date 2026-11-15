@@ -1,4 +1,4 @@
-name: Windows installer cleanup and login lifecycle preflight
+name: Windows installer cleanup and login lifecycle
 
 on:
   push:
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: SeanShaffer88/SeanPak
-          ref: 17ef4c24261729d3dafc16ca67ea72c1fd2dbce1
+          ref: cd30bf20c1a4ef2a62b28c3ac808ec544161fd4a
           path: .seanpak
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
@@ -311,8 +311,6 @@ jobs:
 
               Test-LoginSettings $exe $settings $true 'On' 'ToggleAndSave'
               Assert-RunValue $null 'turning startup off in Settings'
-              Write-Host 'Preflight passed through startup Settings opt-out. The complete lifecycle will run with the final packager.'
-              return
               Run-Native $newSetup @('--install','--to',$dest,'--json','--silent') | Out-Host
               Assert-RunValue $null 'reinstall after Settings opt-out'
               Test-LoginSettings $exe $settings $true 'Off' 'ToggleAndSave'
