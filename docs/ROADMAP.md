@@ -10,9 +10,9 @@ The published v0.28.3 Windows packages passed install, upgrade and uninstall che
 
 The phase order is a proposal. Each phase ends in a tagged release with README, changelog and tests updated.
 
-## Next milestone
+## Current milestone
 
-🔜 **Standalone line tool.** Add straight-line annotations with editable endpoints and the editor's existing colour, width, and undo controls. This completes the line portion of [Phase 2](#phase-2--annotation-and-editing).
+✅ **Standalone line tool (unreleased).** Draw straight-line annotations with editable endpoints and the editor's existing colour, width, and undo controls. This completes the line portion of [Phase 2](#phase-2--annotation-and-editing).
 
 ## Phase 0 — Capture foundation
 
@@ -49,7 +49,7 @@ Blueprint v2 shipped in v0.1 with element, region, window and full-screen captur
 |---|---|
 | Arrows, shapes, text, pen, highlighter, pixelation, crop | ✅ |
 | Numbered step markers, callouts, stamps | ✅ Step markers in v0.7, callouts and stamps in v0.25 |
-| Lines and connectors | ✅ Connector in v0.26.0 draws a right-angle elbow with endpoint dots. Near-axis drags draw a straight connector. 🔜 Standalone line tool. |
+| Lines and connectors | ✅ The standalone Line tool draws straight segments with editable endpoints (unreleased). Connector in v0.26.0 draws a right-angle elbow with endpoint dots. Near-axis drags draw a straight connector. |
 | Spotlight and magnify annotations | ✅ Spotlight in v0.22, magnify in v0.23 |
 | Manual redaction | ✅ Selective pixelation. 🔜 Dedicated manual redaction workflow. |
 | Rotate, flip, grayscale, invert | ✅ v0.5.0 |
