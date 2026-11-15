@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory)][string]$PortableZipPath,
     [Parameter(Mandatory)][string]$ChecksumManifestPath,
     [Parameter(Mandatory)][string]$CandidateDirectory,
-    [Parameter(Mandatory)][string]$EvidenceDirectory
+    [Parameter(Mandatory)][string]$EvidenceDirectory,
+    [ValidateSet('Fastest', 'Optimal')][string]$RuntimeCandidate = 'Optimal'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -143,14 +144,12 @@ $variants = @(foreach ($mode in $archives.Keys) {
         medianCpuMs = Get-Median $trials.cpuMs
     }
 })
-$runtimeCandidate = $variants | Where-Object mode -ne Stored |
-    Sort-Object medianElapsedMs, archiveBytes | Select-Object -First 1
 $result = [ordered]@{
     entryCount = $entryProof.Count
     logicalBytes = $logicalBytes
     parity = 'All archive members matched by order, path, length, SHA-256, timestamp and external attributes. All extracted files matched by path, length and SHA-256.'
     method = 'Three rotated extraction orders in one PowerShell process with unique destinations. OS file cache uncontrolled. CPU measures the extracting PowerShell process. Sizes are logical bytes.'
-    runtimeCandidate = $runtimeCandidate.mode
+    runtimeCandidate = $RuntimeCandidate
     variants = $variants
     extractions = $extractions
 }

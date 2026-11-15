@@ -68,7 +68,8 @@ jobs:
             -InstallerPath ./dist-seanpak/Snipit-v0.28.1-x64-Setup.exe `
             -PortableZipPath ./dist-seanpak/Snipit-v0.28.1-x64-Portable.zip `
             -ChecksumManifestPath ./dist-seanpak/SHA256SUMS.txt `
-            -CandidateDirectory ./compression-candidates -EvidenceDirectory ./compression-evidence
+            -CandidateDirectory ./compression-candidates -EvidenceDirectory ./compression-evidence `
+            -RuntimeCandidate Optimal
 
       - name: Measure the published archive on this runner
         shell: pwsh
@@ -79,11 +80,11 @@ jobs:
             -ChecksumManifestPath ./dist-seanpak/SHA256SUMS.txt `
             -EvidenceDirectory ./baseline-evidence -Tag v0.28.1 -Trials 5 -IdleSeconds 20
 
-      - name: Measure the quicker compressed archive on the same runner
+      - name: Measure the Optimal archive on the same runner
         shell: pwsh
         run: |
           $mode = (Get-Content -LiteralPath ./compression-evidence/compression.json -Raw | ConvertFrom-Json).runtimeCandidate
-          if ($mode -notin @('Fastest','Optimal')) { throw 'Unexpected compressed candidate' }
+          if ($mode -cne 'Optimal') { throw 'Unexpected compressed candidate' }
           & ./tools/benchmark/Measure-SnipitBaseline.ps1 `
             -InstallerPath ./dist-seanpak/Snipit-v0.28.1-x64-Setup.exe `
             -PortableZipPath "./compression-candidates/$mode/Snipit-v0.28.1-x64-Portable.zip" `
@@ -94,7 +95,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: snipit-v0281-portable-compression
+          name: snipit-v0281-portable-compression-optimal
           path: |
             baseline-evidence/*.json
             candidate-evidence/*.json
