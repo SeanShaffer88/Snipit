@@ -70,6 +70,10 @@ jobs:
           "$SP" pack seanpak.json dist/files --out-dir dist-seanpak --json
           "$SP" verify dist-seanpak/*-Setup.exe --json
 
+      - name: Compress the portable ZIP
+        shell: pwsh
+        run: ./tools/Compress-PortableZip.ps1 -PackageDirectory dist-seanpak
+
       - name: Extract release notes (this version's CHANGELOG section only)
         shell: bash
         run: |
