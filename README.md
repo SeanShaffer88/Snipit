@@ -47,7 +47,9 @@ Paste a capture into an image-aware app as PNG or bitmap, or paste into a File E
 | Fixed-size region | `S` in the menu |
 | Interval capture | tray menu, or `--interval N --count M` (in GIF format the run becomes one looping `animation.gif`) |
 
-The menu is a bar that slides down from the top of the screen — click a mode, or use its key: `E` element, `R` region, `W` window, `S` fixed-size region, `H` freehand, `F` all monitors, `D` this monitor, `1`..`9` monitor N, `Space` cycles delay, `Esc` cancels. Right-click acts as `Esc`. A preset region (Settings) can be captured from the tray menu.
+Right-click the tray icon and select **Show capture launcher** to open the half-honeycomb panel at the top of your screen. It gives you shortcuts to the capture toolbox, all-screen capture, recording, on-screen drawing, opening an image in the editor, and Settings.
+
+The capture toolbox is a bar that slides down from the top of the screen. Click a mode, or use its key: `E` element, `R` region, `W` window, `S` fixed-size region, `H` freehand, `F` all monitors, `D` this monitor, `1`..`9` monitor N, `Space` cycles delay, `Esc` cancels. Right-click acts as `Esc`. A preset region can be captured from the tray menu.
 
 In the editor, choose **Line** or press `I` with single-key shortcuts enabled. Pick a colour and width, then drag to draw. In Line mode, click a line and drag either endpoint. Use the editor's Undo and Redo controls to step through drawing and endpoint edits.
 

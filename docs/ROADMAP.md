@@ -14,6 +14,17 @@ The phase order is a proposal. Each phase ends in a tagged release with README, 
 
 ✅ **Standalone line tool (unreleased).** Draw straight-line annotations with editable endpoints and the editor's existing colour, width, and undo controls. This completes the line portion of [Phase 2](#phase-2--annotation-and-editing).
 
+## Capture launcher and workflow
+
+The launcher brings Snipit's existing capture, recording and on-screen drawing commands together. See the [Snap Pro 26 manual](https://support.ashampoo.com/hc/en-us/articles/38161844161810-Snap-Pro-26-Manual) for the reference workflow.
+
+| Follow-up | Builds on |
+|---|---|
+| Opt-in hover launcher with adjustable screen-edge position | Half-honeycomb launch panel and existing display selection |
+| Editable Live Edit objects with a click-through viewing mode | Draw on screen and the editor's annotation tools |
+| Searchable capture gallery | Recent captures, local output folder and Windows OCR |
+| Video trimming and joining | Recording and the bundled FFmpeg export path |
+
 ## Phase 0 — Capture foundation
 
 Blueprint v2 shipped in v0.1 with element, region, window and full-screen capture, multi-monitor support, delay, the editor, clipboard and export.
