@@ -5,6 +5,7 @@
   "primaryExe": "Snipit.exe",
   "desktopShortcut": true,
   "startMenuShortcut": true,
+  "startAtLogin": true,
   "fileAssociations": [],
   "pathEntry": false
 }
