@@ -2,6 +2,18 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Draw a straight line in the editor with **Line** (`I`). Use the existing stroke colour and width controls, select a line to drag either endpoint, and undo or redo each adjustment.
+- Open the top-edge, half-honeycomb capture launcher from the tray. Its shortcuts cover capture, all screens, recording, drawing on screen, opening an image in the editor, and Settings.
+
+### Changed
+
+- Settings use a left navigation rail with General, Capture, Hotkeys, Editor, Output, and Workflows. Save and Cancel stay visible when switching sections.
+- The tray menu groups capture, recording, and app commands and adds direct **Capture all screens** and **Open image…** actions.
+
 ## [0.28.3] - 2026-11-15
 
 ### Added

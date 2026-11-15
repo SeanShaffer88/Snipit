@@ -92,98 +92,176 @@ internal sealed class SettingsWindow : Window
         AutomationProperties.SetLiveSetting(_error, AutomationLiveSetting.Polite);
         SetError(startupWarning);
         _toasts.IsChecked = prefs.ShowToasts; _toasts.ToolTip = "Show notifications for other tools and errors. Routine screen captures are silent.";
-        _toolKeys.IsChecked = prefs.EditorToolHotkeys; _toolKeys.ToolTip = "P pen, H highlight, A arrow, L connector, R rect, O ellipse, T text, N step, K callout, G stamp, B blur, S spotlight, M magnify, C crop, X cut out. Turn off if letter keys clash with your assistive technology.";
+        _toolKeys.IsChecked = prefs.EditorToolHotkeys; _toolKeys.ToolTip = "P pen, H highlight, A arrow, I line, L connector, R rect, O ellipse, T text, N step, K callout, G stamp, B blur, S spotlight, M magnify, C crop, X cut out. Turn off if letter keys clash with your assistive technology.";
         _contrast.IsChecked = prefs.HighContrastHighlight; _contrast.ToolTip = "Thicker yellow highlight and opaque hint bars.";
         _dim.Value = prefs.DimmerOpacity * 100; _dim.ToolTip = "How dark the screen gets while picking.";
 
         Content = BuildLayout(startupWarning is null ? startupHelp : null);
         TesselTheme.Apply(this);
+        if (!SystemParameters.HighContrast)
+        {
+            Background = SettingsChrome.Background;
+            Foreground = SettingsChrome.Ink;
+            foreach (var textBox in new[] { _folder, _fixW, _fixH, _interval, _extEditor, _ffmpeg })
+            {
+                textBox.Background = SettingsChrome.Panel;
+                textBox.Foreground = SettingsChrome.Ink;
+                textBox.BorderBrush = SettingsChrome.Edge;
+                textBox.SelectionBrush = SettingsChrome.Selected;
+                textBox.GotKeyboardFocus += (_, _) => textBox.BorderBrush = SettingsChrome.Accent;
+                textBox.LostKeyboardFocus += (_, _) => textBox.BorderBrush = SettingsChrome.Edge;
+            }
+            foreach (var combo in new[] { _format, _target, _delay, _matte, _effect, _wfCapture, _wfRecording })
+            {
+                combo.Background = SettingsChrome.Panel;
+                combo.Foreground = SettingsChrome.Ink;
+                combo.BorderBrush = SettingsChrome.Edge;
+            }
+            _useLast.Style = _wfManage.Style = SettingsChrome.ButtonStyle;
+        }
     }
 
     private Grid BuildLayout(string? startupHelp)
     {
         bool highContrast = SystemParameters.HighContrast;
-        Brush surface = highContrast ? SystemColors.WindowBrush : TesselTheme.Surface;
-        Brush edge = highContrast ? SystemColors.WindowTextBrush : TesselTheme.Edge;
+        Brush rail = highContrast ? SystemColors.WindowBrush : SettingsChrome.Rail;
+        Brush panel = highContrast ? SystemColors.WindowBrush : SettingsChrome.Panel;
+        Brush edge = highContrast ? SystemColors.WindowTextBrush : SettingsChrome.Edge;
 
-        var heading = new TextBlock { Text = "Settings", FontSize = 24, FontWeight = FontWeights.SemiBold };
+        var heading = new TextBlock { Text = "Settings", FontSize = 22, FontWeight = FontWeights.SemiBold };
         AutomationProperties.SetHeadingLevel(heading, AutomationHeadingLevel.Level1);
-        var headingPanel = new StackPanel();
-        headingPanel.Children.Add(heading);
-        headingPanel.Children.Add(new Border
-        {
-            Width = 32, Height = 3, HorizontalAlignment = HorizontalAlignment.Left,
-            Margin = new Thickness(0, 8, 0, 0),
-            Background = highContrast ? SystemColors.WindowTextBrush : TesselTheme.Action,
-        });
-        var header = new Border { BorderBrush = edge, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(24, 16, 24, 16), Child = headingPanel };
+        var header = new Border { Background = panel, BorderBrush = edge, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(18, 12, 18, 12), Child = heading };
 
-        var sections = new StackPanel { Margin = new Thickness(24, 16, 24, 8) };
-        void AddSection(string title, UIElement content)
+        var navigation = new ListBox
         {
-            var label = new TextBlock { Text = title, FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) };
-            AutomationProperties.SetHeadingLevel(label, AutomationHeadingLevel.Level2);
-            var section = new StackPanel();
-            section.Children.Add(label);
-            section.Children.Add(content);
-            sections.Children.Add(new Border
+            BorderThickness = new Thickness(0), Background = rail, Padding = new Thickness(7, 10, 7, 10),
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+        };
+        AutomationProperties.SetName(navigation, "Settings sections");
+        ScrollViewer.SetHorizontalScrollBarVisibility(navigation, ScrollBarVisibility.Disabled);
+        ScrollViewer.SetVerticalScrollBarVisibility(navigation, ScrollBarVisibility.Auto);
+        if (!highContrast) navigation.ItemContainerStyle = SettingsChrome.NavigationItemStyle;
+
+        var pageHost = new Grid();
+        var pages = new List<UIElement>();
+        void AddPage(string title, UIElement content)
+        {
+            navigation.Items.Add(title);
+            var caption = new TextBlock
             {
-                BorderBrush = edge, BorderThickness = new Thickness(1), Background = surface,
-                CornerRadius = new CornerRadius(4), Padding = new Thickness(16, 12, 16, 12),
-                Margin = new Thickness(0, 0, 0, 12), Child = section,
-            });
+                Text = title, FontSize = 20, FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 14),
+            };
+            AutomationProperties.SetHeadingLevel(caption, AutomationHeadingLevel.Level2);
+            var page = new StackPanel { Margin = new Thickness(18, 14, 18, 14), Visibility = Visibility.Collapsed };
+            page.Children.Add(caption);
+            page.Children.Add(content);
+            pages.Add(page);
+            pageHost.Children.Add(page);
         }
 
         var general = new StackPanel();
-        foreach (var toggle in new[] { _startAtLogin, _toasts, _contrast, _toolKeys })
+        AddToggle(general, _startAtLogin);
+        if (startupHelp is not null)
         {
-            toggle.MinHeight = 26;
-            toggle.VerticalContentAlignment = VerticalAlignment.Center;
-            general.Children.Add(toggle);
-            if (toggle == _startAtLogin && startupHelp is not null)
+            general.Children.Add(new TextBlock
             {
-                general.Children.Add(new TextBlock
-                {
-                    Text = startupHelp, Foreground = TesselTheme.Muted, Tag = "keep",
-                    TextWrapping = TextWrapping.Wrap, Margin = new Thickness(24, 0, 0, 4),
-                });
-            }
+                Text = startupHelp, Foreground = highContrast ? SystemColors.WindowTextBrush : SettingsChrome.Muted,
+                Tag = "keep", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(24, 0, 0, 8),
+            });
         }
-        general.Children.Add(_error);
-        AddSection("General", general);
-        AddSection("Capture", FormRows(
-            ("Output folder", _folder), ("Image format", _format), ("Full-screen target", _target),
-            ("Default delay (s)", _delay), ("Preset region", _presetInfo), (null, _useLast),
-            ("Fixed region width", _fixW), ("Fixed region height", _fixH), ("Interval (seconds)", _interval),
-            ("Gap fill", _matte), ("Dimmer darkness", _dim), ("Auto effect", _effect)));
-        AddSection("Workflows", FormRows(("After capture", _wfCapture), ("After recording", _wfRecording), (null, _wfManage)));
-        AddSection("External tools", FormRows(("External editor", _extEditor), ("FFmpeg override", _ffmpeg)));
+        AddToggle(general, _toasts);
+        AddPage("General", general);
+
+        var capture = new StackPanel();
+        capture.Children.Add(FormRows(
+            ("Full-screen target", _target), ("Default delay (s)", _delay), ("Preset region", _presetInfo),
+            (null, _useLast), ("Fixed region width", _fixW), ("Fixed region height", _fixH),
+            ("Interval (seconds)", _interval), ("Gap fill", _matte), ("Dimmer darkness", _dim)));
+        AddToggle(capture, _contrast);
+        AddPage("Capture", capture);
+
+        var hotkeys = new StackPanel();
+        hotkeys.Children.Add(new TextBlock
+        {
+            Text = "Print Screen opens the capture toolbox. Turn on Quick Mode in the tray menu to capture immediately.",
+            Foreground = highContrast ? SystemColors.WindowTextBrush : SettingsChrome.Muted, Tag = "keep",
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12),
+        });
+        AddToggle(hotkeys, _toolKeys);
+        AddPage("Hotkeys", hotkeys);
+        AddPage("Editor", FormRows(("Auto effect", _effect), ("External editor", _extEditor)));
+        AddPage("Output", FormRows(("Output folder", _folder), ("Image format", _format), ("FFmpeg override", _ffmpeg)));
+        AddPage("Workflows", FormRows(("After capture", _wfCapture), ("After recording", _wfRecording), (null, _wfManage)));
+
         var scroll = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Focusable = false, Content = sections,
+            Focusable = false, Content = pageHost,
         };
+        AutomationProperties.SetName(scroll, "Current settings section");
+        UIElement? visiblePage = null;
+        navigation.SelectionChanged += (_, _) =>
+        {
+            if (navigation.SelectedIndex < 0) return;
+            if (visiblePage is not null) visiblePage.Visibility = Visibility.Collapsed;
+            visiblePage = pages[navigation.SelectedIndex];
+            visiblePage.Visibility = Visibility.Visible;
+            scroll.ScrollToTop();
+        };
+        navigation.SelectedIndex = 0;
+        var body = new Grid();
+        body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(106) });
+        body.ColumnDefinitions.Add(new ColumnDefinition());
+        var railBorder = new Border { Background = rail, BorderBrush = edge, BorderThickness = new Thickness(0, 0, 1, 0), Child = navigation };
+        Grid.SetColumn(scroll, 1);
+        body.Children.Add(railBorder);
+        body.Children.Add(scroll);
 
-        var ok = new Button { Content = "Save", IsDefault = true, MinWidth = 80, MinHeight = 30, ToolTip = "Apply and store settings." };
-        var cancel = new Button { Content = "Cancel", MinWidth = 80, MinHeight = 30, Margin = new Thickness(0, 0, 8, 0), ToolTip = "Close without changes." };
+        var ok = new Button { Content = "Save", IsDefault = true, MinWidth = 82, MinHeight = 32, ToolTip = "Apply and store settings." };
+        var cancel = new Button { Content = "Cancel", MinWidth = 82, MinHeight = 32, Margin = new Thickness(0, 0, 8, 0), ToolTip = "Close without changes." };
+        if (!highContrast)
+        {
+            ok.Tag = cancel.Tag = "keep";
+            ok.Style = SettingsChrome.PrimaryButtonStyle;
+            cancel.Style = SettingsChrome.ButtonStyle;
+        }
         ok.Click += (_, _) => Commit();
-        // The window is shown modeless (Show, not ShowDialog), where IsCancel and
-        // DialogResult do nothing — Cancel and Esc close explicitly.
         cancel.Click += (_, _) => Close();
         KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) Close(); };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        buttons.Children.Add(cancel); buttons.Children.Add(ok);
-        var footer = new Border { Background = surface, BorderBrush = edge, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(24, 12, 24, 12), Child = buttons };
+        buttons.Children.Add(cancel);
+        buttons.Children.Add(ok);
+        var footerContent = new StackPanel();
+        _error.Margin = new Thickness(0, 0, 0, 8);
+        _error.Foreground = highContrast ? SystemColors.WindowTextBrush : SettingsChrome.Danger;
+        _error.Tag = "keep";
+        footerContent.Children.Add(_error);
+        footerContent.Children.Add(buttons);
+        var footer = new Border { Background = panel, BorderBrush = edge, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(18, 10, 18, 10), Child = footerContent };
 
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition());
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        Grid.SetRow(scroll, 1);
+        Grid.SetRow(body, 1);
         Grid.SetRow(footer, 2);
-        root.Children.Add(header); root.Children.Add(scroll); root.Children.Add(footer);
+        root.Children.Add(header);
+        root.Children.Add(body);
+        root.Children.Add(footer);
         return root;
+    }
+
+    private static void AddToggle(Panel panel, CheckBox toggle)
+    {
+        string name = (string)toggle.Content;
+        AutomationProperties.SetName(toggle, name);
+        toggle.Content = new TextBlock { Text = name, Tag = "keep", TextWrapping = TextWrapping.Wrap };
+        toggle.MinHeight = 28;
+        toggle.Margin = new Thickness(0, 0, 0, 4);
+        toggle.VerticalContentAlignment = VerticalAlignment.Center;
+        panel.Children.Add(toggle);
     }
 
     private static Grid FormRows(params (string? Label, FrameworkElement Field)[] rows)
@@ -209,7 +287,8 @@ internal sealed class SettingsWindow : Window
             field.MinHeight = 26;
             if (field is Button) field.HorizontalAlignment = HorizontalAlignment.Left;
             Grid.SetRow(field, row);
-            Grid.SetColumn(field, 1);
+            if (label is null) Grid.SetColumnSpan(field, 2);
+            else Grid.SetColumn(field, 1);
             form.Children.Add(field);
         }
         return form;

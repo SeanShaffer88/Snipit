@@ -18,6 +18,8 @@ internal sealed class AppHost : IDisposable
     private Preferences _prefs;
     private string? _lastPath;
     private SettingsWindow? _settings;
+    private CaptureLauncherWindow? _captureLauncher;
+    private bool _launcherNeedsFlush;
     private RecorderWindow? _recorderWindow;
     private IRecording? _recorder;
     private DrawOverlayWindow? _drawOverlay;
@@ -55,7 +57,11 @@ internal sealed class AppHost : IDisposable
             Text = "Snipit", Visible = true,
             ContextMenuStrip = BuildMenu(),
         };
-        _tray.MouseClick += (_, e) => { if (e.Button == WinForms.MouseButtons.Left) _ = _router.RunSessionAsync(); };
+        _tray.MouseClick += (_, e) =>
+        {
+            if (e.Button == WinForms.MouseButtons.Left)
+                DispatchCaptureAction(() => _ = _router.RunSessionAsync());
+        };
         _tray.BalloonTipClicked += (_, _) => OpenLastFolder();
         _tray.Visible = _prefs.ShowTrayIcon;
         _showWait = ThreadPool.RegisterWaitForSingleObject(_showSignal, (_, _) =>
@@ -82,7 +88,8 @@ internal sealed class AppHost : IDisposable
         _hotkeys.HotkeyPressed += id =>
         {
             if (id != HotkeyManager.IdMenu) return;
-            _ = _prefs.QuickMode ? _router.RunInstantFullScreenAsync(overrideDelay: 0) : _router.RunSessionAsync();
+            DispatchCaptureAction(() =>
+                _ = _prefs.QuickMode ? _router.RunInstantFullScreenAsync(overrideDelay: 0) : _router.RunSessionAsync());
         };
         _hotkeys.RegisterPrintScreen();
         if (warn is not null) Notify("Snipit", warn, null);
@@ -94,6 +101,7 @@ internal sealed class AppHost : IDisposable
     private WinForms.ContextMenuStrip BuildMenu()
     {
         var m = new WinForms.ContextMenuStrip();
+        var darkRenderer = new TrayMenuRenderer();
         WinForms.ToolStripMenuItem Item(string text, string tip, Action a)
         {
             var i = new WinForms.ToolStripMenuItem(text) { ToolTipText = tip };
@@ -101,7 +109,8 @@ internal sealed class AppHost : IDisposable
             m.Items.Add(i);
             return i;
         }
-        Item("Capture…", "Open the capture toolbox.", () => _ = _router.RunSessionAsync());
+        Item("Show capture launcher", "Open the capture launcher at the top of the screen.", ShowCaptureLauncher);
+        Item("Capture…", "Open the capture toolbox.", () => DispatchCaptureAction(() => _ = _router.RunSessionAsync()));
         var quickMode = new WinForms.ToolStripMenuItem("Quick Mode")
         {
             Checked = _prefs.QuickMode,
@@ -114,10 +123,21 @@ internal sealed class AppHost : IDisposable
             SavePrefs();
         };
         m.Items.Add(quickMode);
-        Item("Scrolling capture…", "Pick a scrollable element and capture its full content as one tall image.", () => _ = _router.RunSessionAsync(scroll: true));
-        Item("Pick colour…", "Pick any pixel on screen: shows its colour in a magnifier and copies it as HEX, RGB, HTML, C++ or Delphi text (1-5 or Tab changes the format).", () => _ = _router.RunColorPickAsync());
-        Item("Full screen now", "Capture the configured monitor straight to the clipboard.", () => _ = _router.RunInstantFullScreenAsync());
-        _intervalItem = Item("Start interval capture", "Capture the configured monitor every N seconds into a new folder. Click again to stop.", () => _ = ToggleIntervalAsync());
+        Item("Scrolling capture…", "Pick a scrollable element and capture its full content as one tall image.",
+            () => DispatchCaptureAction(() => _ = _router.RunSessionAsync(scroll: true)));
+        Item("Pick colour…", "Pick any pixel on screen: shows its colour in a magnifier and copies it as HEX, RGB, HTML, C++ or Delphi text (1-5 or Tab changes the format).",
+            () => DispatchCaptureAction(() => _ = _router.RunColorPickAsync()));
+        Item("Full screen now", "Capture the configured monitor, then copy and save the image.",
+            () => DispatchCaptureAction(() => _ = _router.RunInstantFullScreenAsync()));
+        Item("Capture all screens", "Capture all connected monitors, then copy and save the image.",
+            () => DispatchCaptureAction(CaptureAllScreens));
+        Item("Repeat last capture", "Capture the same screen rectangle as the previous capture.",
+            () => DispatchCaptureAction(() => _ = _router.RunRepeatLastAsync()));
+        Item("Capture preset region", "Capture the preset region set in Settings.",
+            () => DispatchCaptureAction(() => _ = _router.RunPresetAsync()));
+        m.Items.Add(new WinForms.ToolStripSeparator());
+        _intervalItem = Item("Start interval capture", "Capture the configured monitor every N seconds into a new folder. Click again to stop.",
+            () => DispatchCaptureAction(() => _ = ToggleIntervalAsync()));
         Item("Record screen…", "Record a monitor (or the last capture region) to an MP4 video.", ShowRecorder);
         Item("Draw on screen", "Draw over the screen with the mouse (1-5 change colour, C clears, Esc finishes). Strokes are captured and recorded like anything else on screen.", () => ToggleDrawOverlay());
         _stopRecordItem = Item("Stop recording", "Finish the current recording and save the MP4.", () => _ = StopRecordingAsync());
@@ -128,11 +148,10 @@ internal sealed class AppHost : IDisposable
             win.Activate();
         });
         _stopRecordItem.Enabled = false;
-        Item("Repeat last capture", "Capture the same screen rectangle as the previous capture.", () => _ = _router.RunRepeatLastAsync());
-        Item("Capture preset region", "Capture the preset region set in Settings.", () => _ = _router.RunPresetAsync());
         m.Items.Add(new WinForms.ToolStripSeparator());
         _historyItem = new WinForms.ToolStripMenuItem("Recent captures") { ToolTipText = "Reopen a recent capture in the editor (recordings play in your default player)." };
         m.Items.Add(_historyItem);
+        Item("Open image…", "Choose an image to open in the editor.", () => DispatchCaptureAction(OpenImage));
         Item("Open output folder", "Open the folder where captures are saved.", () => OpenFolder(Exporter.OutputFolder(_prefs)));
         Item("Open log folder", "Logs stay on this computer.", () => OpenFolder(AppPaths.LogDir));
         Item("Settings…", "Output folder, capture delay, full-screen target and more.", ShowSettings);
@@ -142,10 +161,98 @@ internal sealed class AppHost : IDisposable
         Item("Exit", "Quit Snipit. Print Screen goes back to what it did before.", () => Application.Current.Shutdown());
         m.Opening += (_, _) =>
         {
+            if (WinForms.SystemInformation.HighContrast) m.RenderMode = WinForms.ToolStripRenderMode.System;
+            else m.Renderer = darkRenderer;
             quickMode.Checked = _prefs.QuickMode;
             RebuildHistory();
         };
         return m;
+    }
+
+    private void ShowCaptureLauncher()
+    {
+        if (_router.IsBusy || _recorder is not null || _interval is not null)
+        {
+            Notify("Snipit", "Finish the active capture before opening the launcher.", null);
+            return;
+        }
+        if (_captureLauncher is not null) { _captureLauncher.Activate(); return; }
+        var monitors = MonitorEnumerator.Refresh();
+        var (x, y) = MonitorEnumerator.CursorPos();
+        var monitor = VirtualDesktop.MonitorAt(monitors, x, y) ?? monitors.FirstOrDefault();
+        if (monitor is null) return;
+        var launcher = new CaptureLauncherWindow(monitor, DispatchCaptureAction,
+            ("Capture…", "\uE722", () => _ = _router.RunSessionAsync()),
+            ("All screens", "\uE7F4", CaptureAllScreens),
+            ("Record screen…", "\uE7C8", ShowRecorder),
+            ("Draw on screen", "\uE70F", () => ToggleDrawOverlay()),
+            ("Open image…", "\uE8B7", OpenImage),
+            ("Settings…", "\uE713", ShowSettings));
+        _captureLauncher = launcher;
+        launcher.Closed += (_, _) =>
+        {
+            _captureLauncher = null;
+            _launcherNeedsFlush = true;
+        };
+        launcher.Show();
+    }
+
+    private void CaptureAllScreens() => _ = _router.RunInstantFullScreenAsync(FullScreenTarget.All);
+
+    private void DispatchCaptureAction(Action action)
+    {
+        if (_captureLauncher is null && !_launcherNeedsFlush)
+        {
+            action();
+            return;
+        }
+        _captureLauncher?.Close();
+        _ = Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            DismissCaptureLauncher();
+            action();
+        }, System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    private void DismissCaptureLauncher()
+    {
+        _captureLauncher?.Close();
+        if (!_launcherNeedsFlush) return;
+        _launcherNeedsFlush = false;
+        CaptureLauncherWindow.FlushDismissal();
+    }
+
+    private sealed class TrayMenuRenderer() : WinForms.ToolStripProfessionalRenderer(new TrayMenuColors())
+    {
+        protected override void OnRenderItemText(WinForms.ToolStripItemTextRenderEventArgs e)
+        {
+            e.TextColor = e.Item.Enabled ? System.Drawing.Color.WhiteSmoke : System.Drawing.Color.DarkGray;
+            base.OnRenderItemText(e);
+        }
+
+        protected override void OnRenderArrow(WinForms.ToolStripArrowRenderEventArgs e)
+        {
+            e.ArrowColor = System.Drawing.Color.WhiteSmoke;
+            base.OnRenderArrow(e);
+        }
+    }
+
+    private sealed class TrayMenuColors : WinForms.ProfessionalColorTable
+    {
+        private static readonly System.Drawing.Color Surface = System.Drawing.Color.FromArgb(29, 31, 35);
+        private static readonly System.Drawing.Color Edge = System.Drawing.Color.FromArgb(76, 85, 95);
+        private static readonly System.Drawing.Color Selected = System.Drawing.Color.FromArgb(46, 63, 72);
+        public override System.Drawing.Color ToolStripDropDownBackground => Surface;
+        public override System.Drawing.Color ImageMarginGradientBegin => Surface;
+        public override System.Drawing.Color ImageMarginGradientMiddle => Surface;
+        public override System.Drawing.Color ImageMarginGradientEnd => Surface;
+        public override System.Drawing.Color MenuBorder => Edge;
+        public override System.Drawing.Color MenuItemBorder => System.Drawing.Color.FromArgb(86, 207, 226);
+        public override System.Drawing.Color MenuItemSelected => Selected;
+        public override System.Drawing.Color CheckBackground => Selected;
+        public override System.Drawing.Color CheckSelectedBackground => Selected;
+        public override System.Drawing.Color SeparatorDark => Edge;
+        public override System.Drawing.Color SeparatorLight => Surface;
     }
 
     private static readonly string[] HistoryExtensions = { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff", ".mp4" };
@@ -194,6 +301,22 @@ internal sealed class AppHost : IDisposable
             catch (Exception ex) { Notify("Snipit", "Could not open that recording: " + ex.Message, null); }
             return;
         }
+        OpenEditorImage(path, "History");
+    }
+
+    private void OpenImage()
+    {
+        var picker = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Open image in Snipit",
+            Filter = "Image files|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff",
+        };
+        if (picker.ShowDialog() == true)
+            OpenEditorImage(picker.FileName, "Opened image");
+    }
+
+    private void OpenEditorImage(string path, string mode)
+    {
         try
         {
             var img = new BitmapImage();
@@ -207,14 +330,14 @@ internal sealed class AppHost : IDisposable
             img.Freeze();
             var cap = new CaptureResult(img, new RectPx(0, 0, img.PixelWidth, img.PixelHeight), false,
                 img.PixelWidth * (double)img.PixelHeight / 1_000_000, 1);
-            var win = new EditorWindow(cap, new CaptureMeta("History"), 1, 0, _prefs, SavePrefs, Notify);
+            var win = new EditorWindow(cap, new CaptureMeta(mode), 1, 0, _prefs, SavePrefs, Notify);
             win.Show();
             win.Activate();
         }
         catch (Exception ex)
         {
-            Log.Error("Could not reopen " + path, ex);
-            Notify("Snipit", "Could not open that capture: " + ex.Message, null);
+            Log.Error("Could not open " + path, ex);
+            Notify("Snipit", "Could not open the image: " + ex.Message, null);
         }
     }
 
@@ -245,6 +368,7 @@ internal sealed class AppHost : IDisposable
         if (_recorder is not null) return "A recording is already running.";
         if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
             return "Recording needs Windows 10 version 2004 (build 19041) or later.";
+        DismissCaptureLauncher();
         MonitorInfo target = req.Monitor;
         RectPx? crop = null;
         if (req.UseRegion)
@@ -532,6 +656,7 @@ internal sealed class AppHost : IDisposable
 
     public void Dispose()
     {
+        _captureLauncher?.Close();
         _schedTimer?.Stop();
         if (_recorder is not null && OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
         {
