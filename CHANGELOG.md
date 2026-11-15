@@ -2,6 +2,13 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
+## [0.28.2] - 2026-11-14
+
+### Changed
+
+- The portable ZIP now uses Deflate compression. In a same-payload Windows benchmark, the ZIP shrank 58.5%, from 371,249,650 to 154,045,390 bytes. All 487 extracted files matched byte for byte.
+- Median one-time extraction increased from 196 ms to 1,244 ms on the same Windows runner. [Windows benchmark](https://github.com/SeanShaffer88/Snipit/actions/runs/43660594319)
+
 ## [0.28.1] - 2026-11-14
 
 ### Added
