@@ -14,10 +14,10 @@ internal static class StartAtLogin
     {
         try
         {
-            if (InstalledCommand() is not { } command) return (null, null);
+            if (InstalledExecutable() is not { } exe) return (null, null);
             using var key = Registry.CurrentUser.OpenSubKey(RunKey);
             object? current = key?.GetValue(RunName, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
-            return (Equals(current, command), null);
+            return (OwnsCommand(current, exe), null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or ArgumentException)
         {
@@ -30,22 +30,24 @@ internal static class StartAtLogin
     {
         try
         {
-            if (InstalledCommand() is not { } command)
+            if (InstalledExecutable() is not { } exe)
                 return "Start at login requires an installed copy. Reopen Settings from the installed Snipit.";
+            string command = $"\"{exe}\"";
             if (enabled && command.Length > 260)
                 return "The Snipit install path is too long for Windows startup. Install Snipit at a shorter path.";
             using var key = enabled ? Registry.CurrentUser.CreateSubKey(RunKey)
                 : Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
             if (key is null) return null;
             object? current = key.GetValue(RunName, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+            bool owned = OwnsCommand(current, exe);
             if (enabled)
             {
-                if (Equals(current, command)) return null;
+                if (owned) return null;
                 if (current is not null)
                     return "A different Windows startup entry uses the name Snipit. Remove that entry before enabling Start at login.";
                 key.SetValue(RunName, command, RegistryValueKind.String);
             }
-            else if (Equals(current, command))
+            else if (owned)
             {
                 key.DeleteValue(RunName, throwOnMissingValue: false);
             }
@@ -58,7 +60,25 @@ internal static class StartAtLogin
         }
     }
 
-    private static string? InstalledCommand()
+    private static bool OwnsCommand(object? value, string exe)
+    {
+        if (value is not string { Length: > 2 } command || command[0] != '"' || command[^1] != '"')
+            return false;
+        string path = command[1..^1];
+        if (!Path.IsPathFullyQualified(path) || path.IndexOfAny(Path.GetInvalidPathChars()) >= 0
+            || path.Contains('*') || path.Contains('?'))
+            return false;
+        try
+        {
+            return string.Equals(Path.GetFullPath(path), Path.GetFullPath(exe), StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+    }
+
+    private static string? InstalledExecutable()
     {
         using var key = Registry.CurrentUser.OpenSubKey(InstallKey);
         if (key?.GetValue("InstallLocation", null, RegistryValueOptions.DoNotExpandEnvironmentNames)
@@ -66,6 +86,6 @@ internal static class StartAtLogin
             return null;
         string exe = Path.Combine(directory, "Snipit.exe");
         return string.Equals(Path.GetFullPath(exe), Environment.ProcessPath, StringComparison.OrdinalIgnoreCase)
-            ? $"\"{exe}\"" : null;
+            ? exe.Replace('/', '\\') : null;
     }
 }
