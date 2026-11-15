@@ -79,6 +79,9 @@ try {
         throw 'The owned tray Exit item has no UI Automation action'
     }
 
+    # Retain a process handle before invoking the command. Windows PowerShell's
+    # .NET Framework can lose exit details if it first opens the PID afterward.
+    $null = $process.Handle
     $clock = [Diagnostics.Stopwatch]::StartNew()
     try {
         if ($method -eq 'InvokePattern') { $action.Invoke() } else { $action.DoDefaultAction() }

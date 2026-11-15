@@ -193,11 +193,18 @@ $trialsRaw = for ($index = 1; $index -le $Trials; $index++) {
         $readyMs = Wait-ForStartup $process $elapsed $profilePath
         if ((Read-PrintScreen) -ne 0) { throw 'Startup did not apply the Print Screen override' }
         $idle = Measure-Idle $process $IdleSeconds $hostInfo.logicalProcessors
+        [ordered]@{trial = $index; readyMs = $readyMs; idle = $idle} |
+            ConvertTo-Json -Depth 9 | Set-Content -LiteralPath (Join-Path $evidence "trial-$index.json")
         $driver = Join-Path $PSScriptRoot 'Invoke-SnipitTrayExit.ps1'
-        $exit = Invoke-OwnedProcess $windowsPowerShell @('-NoProfile','-NonInteractive','-STA','-ExecutionPolicy','Bypass',
-            '-File', $driver, '-OwnedPid', $process.Id.ToString()) 25000 | ConvertFrom-Json
-        if (!$process.WaitForExit(1000) -or $process.ExitCode -ne 0 -or $exit.exitCode -ne 0) {
-            throw 'Tray Exit failed to produce a normal exit code'
+        $driverOutput = Invoke-OwnedProcess $windowsPowerShell @('-NoProfile','-NonInteractive','-STA','-ExecutionPolicy','Bypass',
+            '-File', $driver, '-OwnedPid', $process.Id.ToString()) 25000
+        if (!$driverOutput) { throw 'Tray Exit driver emitted no timing evidence' }
+        $exit = $driverOutput | ConvertFrom-Json
+        Write-Host "Tray Exit driver: $driverOutput"
+        if (!$process.WaitForExit(1000)) { throw 'Tray Exit did not end the launched process' }
+        if ($process.ExitCode -ne 0) {
+            Read-Log $profilePath | Write-Host
+            throw "Tray Exit ended the launched process with exit code $($process.ExitCode)"
         }
         if ((Read-Log $profilePath) -notmatch '(?m)\[INFO\] Snipit stopped\s*$') {
             throw 'Graceful exit did not produce its stop marker'
