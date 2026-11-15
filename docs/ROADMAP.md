@@ -2,11 +2,17 @@
 
 Goal: eventually cover the full feature list Sean supplied (screen capture, recording, annotation, AI/smart tools, library, sharing, utilities).
 
-**Status through v0.27.0.** ✅ Implemented · 🔜 Planned · ❓ Needs a design or scope decision · ⛔ Outside the offline scope unless approved.
+**Status through [v0.28.3](https://github.com/SeanShaffer88/Snipit/releases/tag/v0.28.3).** ✅ Implemented · 🔜 Planned · ❓ Needs a design or scope decision · ⛔ Outside the offline scope unless approved.
 
 Implementation status comes from the source and release history. The Windows field test covered the v0.16.0 x64 installer and portable build, live UI and Print Screen behavior, SharpSnip settings carryover, and uninstall cleanup. See [Windows field verification](../CHANGELOG.md#windows-field-verification), [AUDIT.md](../AUDIT.md), and [TEST-PLAN.md](TEST-PLAN.md).
 
+The published v0.28.3 Windows packages passed install, upgrade and uninstall checks. The portable build passed Explorer JPG paste, Settings scrolling and save controls, and silent Quick Mode through automated hotkey dispatch. [Windows verification run](https://github.com/SeanShaffer88/Snipit/actions/runs/43762378605)
+
 The phase order is a proposal. Each phase ends in a tagged release with README, changelog and tests updated.
+
+## Next milestone
+
+🔜 **Standalone line tool.** Add straight-line annotations with editable endpoints and the editor's existing colour, width, and undo controls. This completes the line portion of [Phase 2](#phase-2--annotation-and-editing).
 
 ## Phase 0 — Capture foundation
 
@@ -18,7 +24,7 @@ Blueprint v2 shipped in v0.1 with element, region, window and full-screen captur
 |---|---|
 | Full-screen, all monitors, or a numbered monitor | ✅ Capture mode bar and CLI |
 | Window under the cursor | ✅ Window mode, with whole-window or client-area capture. The standalone active-window hotkey was retired in v0.10. |
-| Rectangular region | ✅ |
+| Rectangular region | ✅ Since v0.28.0, releasing a normal drag confirms the selection and starts the capture or configured countdown. Shift-drag keeps the selection open for adjustments or multiple areas. |
 | Fixed-size / exact-dimension region | ✅ v0.3 |
 | Repeat last capture / preset region | ✅ Tray menu |
 | Delayed capture | ✅ |
@@ -26,7 +32,9 @@ Blueprint v2 shipped in v0.1 with element, region, window and full-screen captur
 | Object and window-control capture | ✅ Element mode |
 | Menu capture | ✅ Capture delay. A dedicated menu-capture shortcut is pending. |
 | Print Screen replaces Snipping Tool | ✅ Sole global hotkey since v0.10. Exit Snipit or use `--restore-printscreen` before uninstalling. |
-| Dark settings and capture mode bar | ✅ TesselGUI revision 3, with a movable capture bar since v0.14 |
+| Quick Mode | ✅ v0.28.0. Print Screen captures the configured full-screen target immediately, without opening the capture toolbox. |
+| Silent snips | ✅ v0.28.3. Successful still captures are silent. Save and clipboard failures can still alert when notifications are enabled. |
+| Dark Settings and capture mode bar | ✅ TesselGUI revision 3, with a movable capture bar since v0.14. v0.28.3 groups related Settings controls in a scrollable window with Save and Cancel always visible. |
 | Multiple-area capture | ✅ v0.19. In Region mode, press A to save up to 16 rectangles, then Enter to combine the selected areas into one image. |
 | Hand Print Screen back automatically on uninstall | ❓ Requires an uninstall hook in SeanPak. Writing the setting at install time would change the user's Print Screen behavior. |
 | Freehand and polygon capture | ✅ Drag to draw freehand or click vertices to draw a polygon (v0.27.0). Save as PNG to preserve transparency outside the outline. |
@@ -62,6 +70,7 @@ Blueprint v2 shipped in v0.1 with element, region, window and full-screen captur
 | Recent captures | ✅ Tray list in v0.7. 🔜 Searchable library, tags, filters, sorting controls and history gallery. |
 | Custom file-naming patterns, automatic folder organisation | 🔜 |
 | Export PNG, JPG, BMP, TIFF, GIF, and PDF | ✅ Includes a lossless single-image PDF writer |
+| Paste a capture into File Explorer | ✅ v0.28.3. Ctrl+V pastes a `.jpg` file into the open folder. Image-aware apps can still paste PNG or bitmap data. |
 | APNG and FFmpeg export | ✅ v0.8. FFmpeg converts recordings and GIFs to supported video or audio formats. |
 | Export PSD / TGA | ❓ Custom writers, low priority |
 | External editor | ✅ v0.7 |
@@ -71,6 +80,8 @@ Blueprint v2 shipped in v0.1 with element, region, window and full-screen captur
 | Capture magnifier and pixel readout, colour picker, drawing on screen | ✅ Available in Region mode or from the tray, depending on the tool |
 | On-screen ruler and dedicated whiteboard | 🔜 |
 | Hideable tray icon | ✅ v0.6.0. Running Snipit again restores it. |
+| Start at login | ✅ v0.28.1. Enabled by default for installed copies and configurable in Settings. |
+| Installer cleanup and portable download | ✅ v0.28.1 removes `Uninstall.exe` while preserving settings. v0.28.2 compresses the portable ZIP. |
 | Scheduling and context-menu quick actions | ✅ Interval still captures, one-shot recorder scheduling, and tray quick actions. 🔜 Schedule a still capture for a specific time. |
 
 ## Phase 4 — Text recognition
