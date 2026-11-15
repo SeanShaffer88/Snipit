@@ -191,13 +191,13 @@ internal static class Program
 
             await Key(0x4C); // L remains assigned to the Connector tool
             Check(FindControl<ToggleButton>("Connector (L)").IsChecked == true, "L did not select Connector.");
-            await Drag(new Point(42, 65), new Point(250, 125));
+            await Drag(new Point(150, 80), new Point(350, 140));
             Check(_layer.Children.OfType<System.Windows.Shapes.Path>().Count() == 1,
                 "Connector drag did not retain its separate annotation type.");
             byte[] connector = await SaveImage();
-            AssertBlue(connector, new Point(130, 65));
-            AssertBlue(connector, new Point(250, 105));
-            AssertBlue(connector, new Point(250, 125));
+            AssertBlue(connector, new Point(230, 80));
+            AssertBlue(connector, new Point(350, 120));
+            AssertBlue(connector, new Point(350, 140));
             Console.WriteLine("Vertical Line and the L shortcut for the existing elbow Connector both render.");
 
             Console.WriteLine($"PASS: Snipit editor integration. PNG artifacts were written under {_output}");
@@ -398,7 +398,8 @@ internal static class Program
             Check(width > 1 && height > 1, "The runner has no usable virtual desktop.");
             int x = (int)Math.Round((point.X - GetSystemMetrics(76)) * 65535.0 / (width - 1));
             int y = (int)Math.Round((point.Y - GetSystemMetrics(77)) * 65535.0 / (height - 1));
-            Check(x is >= 0 and <= 65535 && y is >= 0 and <= 65535, "Pointer exceeds the virtual desktop.");
+            Check(x is >= 0 and <= 65535 && y is >= 0 and <= 65535,
+                $"Pointer ({point.X}, {point.Y}) exceeds the {width}×{height} virtual desktop.");
             var input = new Input();
             input.Data.Mouse = new Mouse { X = x, Y = y, Flags = 0xC001 }; // MOVE | VIRTUALDESK | ABSOLUTE
             Send(input);
