@@ -24,7 +24,7 @@ Blueprint v2 shipped in v0.1 with element, region, window and full-screen captur
 |---|---|
 | Full-screen, all monitors, or a numbered monitor | ✅ Capture mode bar and CLI |
 | Window under the cursor | ✅ Window mode, with whole-window or client-area capture. The standalone active-window hotkey was retired in v0.10. |
-| Rectangular region | ✅ Since v0.28.0, releasing a normal drag captures immediately. Shift-drag keeps the selection open for adjustments or multiple areas. |
+| Rectangular region | ✅ Since v0.28.0, releasing a normal drag confirms the selection and starts the capture or configured countdown. Shift-drag keeps the selection open for adjustments or multiple areas. |
 | Fixed-size / exact-dimension region | ✅ v0.3 |
 | Repeat last capture / preset region | ✅ Tray menu |
 | Delayed capture | ✅ |
