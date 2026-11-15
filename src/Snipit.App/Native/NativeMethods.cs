@@ -101,6 +101,7 @@ internal static class NativeMethods
         SendInput(1, new[] { input }, Marshal.SizeOf<INPUT>());
     }
     [DllImport("user32.dll")] public static extern uint GetDoubleClickTime();
+    [DllImport("user32.dll")] public static extern uint GetClipboardSequenceNumber();
     [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
 
     [DllImport("kernel32.dll")] public static extern bool AttachConsole(int pid);

@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Automation;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
+using System.Windows.Media;
 using Snipit.Core;
 
 namespace Snipit;
@@ -24,15 +26,21 @@ internal sealed class SettingsWindow : Window
     private readonly CheckBox _toasts = new() { Content = "Show notifications" };
     private readonly CheckBox _contrast = new() { Content = "High-contrast highlight" };
     private readonly CheckBox _toolKeys = new() { Content = "Single-key tool shortcuts in the editor" };
-    private readonly Slider _dim = new() { Minimum = 20, Maximum = 90, Width = 200, TickFrequency = 10, IsSnapToTickEnabled = false };
-    private readonly TextBlock _error = new() { Foreground = TesselTheme.Danger, TextWrapping = TextWrapping.Wrap };
+    private readonly Slider _dim = new() { Minimum = 20, Maximum = 90, MaxWidth = 200, TickFrequency = 10, IsSnapToTickEnabled = false };
+    private readonly TextBlock _error = new() { Foreground = TesselTheme.Danger, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
 
     public SettingsWindow(Preferences prefs, Func<Preferences, string?> apply, Action<string>? warn = null)
     {
         _prefs = prefs; _apply = apply; _warn = warn;
         Title = "Snipit settings";
-        SizeToContent = SizeToContent.WidthAndHeight; ResizeMode = ResizeMode.NoResize;
+        Rect workArea = SystemParameters.WorkArea;
+        Width = Math.Min(640, workArea.Width);
+        Height = Math.Min(680, workArea.Height);
+        MinWidth = Math.Min(400, Width);
+        MinHeight = Math.Min(320, Height);
+        ResizeMode = ResizeMode.CanResize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        UseLayoutRounding = true;
 
         _format.ItemsSource = ImageFormats.All;
         _target.ItemsSource = new[] { "Current monitor", "All monitors" };
@@ -81,45 +89,144 @@ internal sealed class SettingsWindow : Window
         _startAtLogin.ToolTip = startupHelp;
         ToolTipService.SetShowOnDisabled(_startAtLogin, true);
         AutomationProperties.SetHelpText(_startAtLogin, startupHelp);
-        _error.Text = startupWarning ?? "";
-        _toasts.IsChecked = prefs.ShowToasts; _toasts.ToolTip = "Balloon notifications after saving or on errors.";
+        AutomationProperties.SetLiveSetting(_error, AutomationLiveSetting.Polite);
+        SetError(startupWarning);
+        _toasts.IsChecked = prefs.ShowToasts; _toasts.ToolTip = "Show notifications for other tools and errors. Routine screen captures are silent.";
         _toolKeys.IsChecked = prefs.EditorToolHotkeys; _toolKeys.ToolTip = "P pen, H highlight, A arrow, L connector, R rect, O ellipse, T text, N step, K callout, G stamp, B blur, S spotlight, M magnify, C crop, X cut out. Turn off if letter keys clash with your assistive technology.";
         _contrast.IsChecked = prefs.HighContrastHighlight; _contrast.ToolTip = "Thicker yellow highlight and opaque hint bars.";
         _dim.Value = prefs.DimmerOpacity * 100; _dim.ToolTip = "How dark the screen gets while picking.";
 
-        var grid = new Grid { Margin = new Thickness(16) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(280) });
-        int row = 0;
-        void Add(string label, UIElement c)
-        {
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var l = new TextBlock { Text = label, Margin = new Thickness(0, 6, 12, 6), VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetRow(l, row); Grid.SetRow(c, row); Grid.SetColumn(c, 1);
-            if (c is FrameworkElement fe) fe.Margin = new Thickness(0, 4, 0, 4);
-            grid.Children.Add(l); grid.Children.Add(c); row++;
-        }
-        Add("Output folder", _folder); Add("Image format", _format); Add("External editor", _extEditor); Add("FFmpeg override", _ffmpeg);
-        Add("Preset region", _presetInfo); Add("", _useLast);
-        Add("After capture", _wfCapture); Add("After recording", _wfRecording); Add("Workflows", _wfManage);
-        Add("Fixed region width", _fixW); Add("Fixed region height", _fixH); Add("Interval (seconds)", _interval);
-        Add("Full-screen target", _target); Add("Default delay (s)", _delay);
-        Add("Gap fill", _matte); Add("Dimmer darkness", _dim); Add("Auto effect", _effect);
-        Add("", _startAtLogin); Add("", _toasts); Add("", _contrast); Add("", _toolKeys);
-        Add("", _error);
+        Content = BuildLayout(startupWarning is null ? startupHelp : null);
+        TesselTheme.Apply(this);
+    }
 
-        var ok = new Button { Content = "Save", IsDefault = true, Width = 80, Margin = new Thickness(4), ToolTip = "Apply and store settings." };
-        var cancel = new Button { Content = "Cancel", Width = 80, Margin = new Thickness(4), ToolTip = "Close without changes." };
+    private Grid BuildLayout(string? startupHelp)
+    {
+        bool highContrast = SystemParameters.HighContrast;
+        Brush surface = highContrast ? SystemColors.WindowBrush : TesselTheme.Surface;
+        Brush edge = highContrast ? SystemColors.WindowTextBrush : TesselTheme.Edge;
+
+        var heading = new TextBlock { Text = "Settings", FontSize = 24, FontWeight = FontWeights.SemiBold };
+        AutomationProperties.SetHeadingLevel(heading, AutomationHeadingLevel.Level1);
+        var headingPanel = new StackPanel();
+        headingPanel.Children.Add(heading);
+        headingPanel.Children.Add(new Border
+        {
+            Width = 32, Height = 3, HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(0, 8, 0, 0),
+            Background = highContrast ? SystemColors.WindowTextBrush : TesselTheme.Action,
+        });
+        var header = new Border { BorderBrush = edge, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(24, 16, 24, 16), Child = headingPanel };
+
+        var sections = new StackPanel { Margin = new Thickness(24, 16, 24, 8) };
+        void AddSection(string title, UIElement content)
+        {
+            var label = new TextBlock { Text = title, FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) };
+            AutomationProperties.SetHeadingLevel(label, AutomationHeadingLevel.Level2);
+            var section = new StackPanel();
+            section.Children.Add(label);
+            section.Children.Add(content);
+            sections.Children.Add(new Border
+            {
+                BorderBrush = edge, BorderThickness = new Thickness(1), Background = surface,
+                CornerRadius = new CornerRadius(4), Padding = new Thickness(16, 12, 16, 12),
+                Margin = new Thickness(0, 0, 0, 12), Child = section,
+            });
+        }
+
+        var general = new StackPanel();
+        foreach (var toggle in new[] { _startAtLogin, _toasts, _contrast, _toolKeys })
+        {
+            toggle.MinHeight = 26;
+            toggle.VerticalContentAlignment = VerticalAlignment.Center;
+            general.Children.Add(toggle);
+            if (toggle == _startAtLogin && startupHelp is not null)
+            {
+                general.Children.Add(new TextBlock
+                {
+                    Text = startupHelp, Foreground = TesselTheme.Muted, Tag = "keep",
+                    TextWrapping = TextWrapping.Wrap, Margin = new Thickness(24, 0, 0, 4),
+                });
+            }
+        }
+        general.Children.Add(_error);
+        AddSection("General", general);
+        AddSection("Capture", FormRows(
+            ("Output folder", _folder), ("Image format", _format), ("Full-screen target", _target),
+            ("Default delay (s)", _delay), ("Preset region", _presetInfo), (null, _useLast),
+            ("Fixed region width", _fixW), ("Fixed region height", _fixH), ("Interval (seconds)", _interval),
+            ("Gap fill", _matte), ("Dimmer darkness", _dim), ("Auto effect", _effect)));
+        AddSection("Workflows", FormRows(("After capture", _wfCapture), ("After recording", _wfRecording), (null, _wfManage)));
+        AddSection("External tools", FormRows(("External editor", _extEditor), ("FFmpeg override", _ffmpeg)));
+        var scroll = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Focusable = false, Content = sections,
+        };
+
+        var ok = new Button { Content = "Save", IsDefault = true, MinWidth = 80, MinHeight = 30, ToolTip = "Apply and store settings." };
+        var cancel = new Button { Content = "Cancel", MinWidth = 80, MinHeight = 30, Margin = new Thickness(0, 0, 8, 0), ToolTip = "Close without changes." };
         ok.Click += (_, _) => Commit();
         // The window is shown modeless (Show, not ShowDialog), where IsCancel and
         // DialogResult do nothing — Cancel and Esc close explicitly.
         cancel.Click += (_, _) => Close();
         KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) Close(); };
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, 16, 12) };
-        buttons.Children.Add(ok); buttons.Children.Add(cancel);
-        var root = new StackPanel(); root.Children.Add(grid); root.Children.Add(buttons);
-        Content = root;
-        TesselTheme.Apply(this);
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        buttons.Children.Add(cancel); buttons.Children.Add(ok);
+        var footer = new Border { Background = surface, BorderBrush = edge, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(24, 12, 24, 12), Child = buttons };
+
+        var root = new Grid();
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition());
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Grid.SetRow(scroll, 1);
+        Grid.SetRow(footer, 2);
+        root.Children.Add(header); root.Children.Add(scroll); root.Children.Add(footer);
+        return root;
+    }
+
+    private static Grid FormRows(params (string? Label, FrameworkElement Field)[] rows)
+    {
+        var form = new Grid();
+        form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+        form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
+        for (int row = 0; row < rows.Length; row++)
+        {
+            var (label, field) = rows[row];
+            form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            if (label is not null)
+            {
+                var text = new TextBlock
+                {
+                    Text = label, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 3, 12, 3),
+                };
+                Grid.SetRow(text, row);
+                form.Children.Add(text);
+            }
+            field.Margin = new Thickness(0, 3, 0, 3);
+            field.MinHeight = 26;
+            if (field is Button) field.HorizontalAlignment = HorizontalAlignment.Left;
+            Grid.SetRow(field, row);
+            Grid.SetColumn(field, 1);
+            form.Children.Add(field);
+        }
+        return form;
+    }
+
+    private void SetError(string? message)
+    {
+        _error.Text = message ?? "";
+        _error.Visibility = string.IsNullOrEmpty(message) ? Visibility.Collapsed : Visibility.Visible;
+        if (_error.IsLoaded && _error.Visibility == Visibility.Visible)
+        {
+            _ = Dispatcher.InvokeAsync(() =>
+            {
+                _error.BringIntoView();
+                UIElementAutomationPeer.FromElement(_error)?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+            }, System.Windows.Threading.DispatcherPriority.Loaded);
+        }
     }
 
     private void UpdatePresetLabel() =>
@@ -177,13 +284,13 @@ internal sealed class SettingsWindow : Window
             && StartAtLogin.SetEnabled(startAtLogin) is { } startupWarning)
         {
             problems.Add(startupWarning);
-            _error.Text = "Settings saved, with notes: " + string.Join(" ", problems);
+            SetError("Settings saved, with notes: " + string.Join(" ", problems));
             return;
         }
         if (problems.Count > 0)
         {
             string msg = "Settings saved, with notes: " + string.Join(" ", problems);
-            if (_warn is not null) _warn(msg); else _error.Text = msg;
+            if (_warn is not null) _warn(msg); else SetError(msg);
         }
         Close();
     }

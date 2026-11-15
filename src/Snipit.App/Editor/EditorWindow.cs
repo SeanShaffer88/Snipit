@@ -959,7 +959,12 @@ internal sealed class EditorWindow : Window
 
     private void CopyImage()
     {
-        _status.Text = ClipboardWriter.SetImage(Flatten()) ? "Copied to clipboard." : "Clipboard busy, try again.";
+        _status.Text = ClipboardWriter.SetImage(Flatten()) switch
+        {
+            ImageClipboardResult.ImageAndJpeg => "Copied to clipboard.",
+            ImageClipboardResult.ImageOnly => "Image copied. JPEG file paste is unavailable.",
+            _ => "Could not copy to the clipboard. Try again.",
+        };
     }
 
     private void Save()

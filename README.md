@@ -34,7 +34,7 @@ The installer enables **Start at login** by default. To turn it off, clear **Sta
 | Delay | 0 / 3 / 5 / 10 s countdown for menus and tooltips. `Esc` cancels. The countdown chip never appears in the image. |
 | Editor | Pen, highlighter, arrow, connector, rectangle, ellipse, text, step markers, blur (pixelate), crop, undo/redo, copy, save, capture metadata panel — plus Copy text (built-in Windows OCR), one-click Redact of emails, cards, IPs and key-shaped tokens, OCR find & replace text, resize, watermark, brightness/contrast, an optional auto-applied effect, and whole-image invert, grayscale, flip and rotate. Recent captures reopen from the tray menu, and an external editor can be wired up in Settings. |
 
-Snipit copies captures to the clipboard as PNG and bitmap. If the clipboard is unavailable, Snipit still saves the image.
+Paste a capture into an image-aware app as PNG or bitmap, or paste into a File Explorer folder to copy a JPEG file. JPEGs staged for the clipboard live in the `clipboard` subfolder of Snipit's data directory. Snipit checks for retired files on later clipboard writes and keeps them for at least 24 hours after it first sees that the clipboard no longer references them. The image saved to your output folder uses the format selected in Settings. Successful still captures are silent. If copying fails, Snipit still saves the image.
 
 ## Use
 
