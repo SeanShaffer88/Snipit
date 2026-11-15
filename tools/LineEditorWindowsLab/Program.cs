@@ -191,13 +191,13 @@ internal static class Program
 
             await Key(0x4C); // L remains assigned to the Connector tool
             Check(FindControl<ToggleButton>("Connector (L)").IsChecked == true, "L did not select Connector.");
-            await Drag(new Point(42, 275), new Point(250, 330));
+            await Drag(new Point(42, 65), new Point(250, 125));
             Check(_layer.Children.OfType<System.Windows.Shapes.Path>().Count() == 1,
                 "Connector drag did not retain its separate annotation type.");
             byte[] connector = await SaveImage();
-            AssertBlue(connector, new Point(130, 275));
-            AssertBlue(connector, new Point(250, 314));
-            AssertBlue(connector, new Point(250, 330));
+            AssertBlue(connector, new Point(130, 65));
+            AssertBlue(connector, new Point(250, 105));
+            AssertBlue(connector, new Point(250, 125));
             Console.WriteLine("Vertical Line and the L shortcut for the existing elbow Connector both render.");
 
             Console.WriteLine($"PASS: Snipit editor integration. PNG artifacts were written under {_output}");
