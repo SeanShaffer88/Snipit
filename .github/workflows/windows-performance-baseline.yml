@@ -1,0 +1,81 @@
+name: Snipit v0.28.1 performance baseline
+
+on:
+  push:
+    branches: [verify/snipit-v0281-performance-baseline]
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      LAB_VERSION: 0.28.1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Download and verify the published release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
+              throw 'Use a GitHub-hosted Windows runner for this test.'
+          }
+          $repo = 'SeanShaffer88/Snipit'
+          $tag = "v$env:LAB_VERSION"
+          $setup = "Snipit-$tag-x64-Setup.exe"
+          $portable = "Snipit-$tag-x64-Portable.zip"
+          $manifest = 'SHA256SUMS.txt'
+          $releaseJson = gh api "repos/$repo/releases/tags/$tag"
+          if ($LASTEXITCODE -ne 0) { throw "Could not read release metadata for $repo $tag" }
+          $release = $releaseJson | ConvertFrom-Json
+          if ($release.tag_name -cne $tag -or $release.draft -or $release.prerelease -or !$release.published_at) {
+              throw "$repo $tag is not a published stable release"
+          }
+          $names = @($setup, $portable, $manifest)
+          if (@($release.assets).Count -ne $names.Count) { throw 'Unexpected release asset count' }
+          $assets = @{}
+          foreach ($name in $names) {
+              $matched = @($release.assets | Where-Object name -CEQ $name)
+              if ($matched.Count -ne 1 -or $matched[0].state -ne 'uploaded' -or $matched[0].size -le 0 -or
+                  $matched[0].digest -notmatch '^sha256:([0-9a-f]{64})$') {
+                  throw "Missing uploaded asset or SHA-256 digest for $name"
+              }
+              $assets[$name] = $matched[0]
+          }
+          if (Test-Path -LiteralPath 'dist-seanpak') { throw 'Release download directory already exists' }
+          gh release download $tag --repo $repo --dir dist-seanpak --pattern $setup --pattern $portable --pattern $manifest
+          if ($LASTEXITCODE -ne 0) { throw "Could not download all release assets for $tag" }
+          foreach ($name in $names) {
+              $file = Get-Item -LiteralPath (Join-Path 'dist-seanpak' $name)
+              $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+              if ($file.Length -ne $assets[$name].size -or "sha256:$hash" -ine $assets[$name].digest) {
+                  throw "Downloaded asset size or SHA-256 mismatch for $name"
+              }
+              Write-Host "Verified GitHub digest: $hash  $name"
+          }
+
+      - name: Measure published Snipit
+        shell: pwsh
+        run: |
+          & ./tools/benchmark/Measure-SnipitBaseline.ps1 `
+            -InstallerPath ./dist-seanpak/Snipit-v0.28.1-x64-Setup.exe `
+            -PortableZipPath ./dist-seanpak/Snipit-v0.28.1-x64-Portable.zip `
+            -ChecksumManifestPath ./dist-seanpak/SHA256SUMS.txt `
+            -EvidenceDirectory ./baseline-evidence -Tag v0.28.1 -Trials 5 -IdleSeconds 20
+
+      - name: Retain raw baseline evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: snipit-v0281-baseline
+          path: |
+            baseline-evidence/*.json
+            tools/benchmark/*.ps1
+          if-no-files-found: error
