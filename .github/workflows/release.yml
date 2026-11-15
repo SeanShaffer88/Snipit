@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: SeanShaffer88/SeanPak
-          ref: cd30bf20c1a4ef2a62b28c3ac808ec544161fd4a   # pinned; bump on purpose when SeanPak changes
+          ref: 58f33591b8e63bf999c2744446e5287acc30ad35   # pinned; bump on purpose when SeanPak changes
           path: .seanpak
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
