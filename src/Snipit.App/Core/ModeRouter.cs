@@ -198,8 +198,8 @@ internal sealed class ModeRouter
         // (a past capture from the tray history). The Settings auto-effect, which
         // the editor used to apply on open, is applied to the capture itself here.
         var image = ApplyAutoEffect(cap.Image);
-        bool copied = ClipboardWriter.SetImage(image);
-        if (cap.Megapixels > 100) _notify("Snipit", $"Large capture ({cap.Megapixels:F0} MP). Saving may be slow.", null);
+        ImageClipboardResult clipboard = ClipboardWriter.SetImage(image);
+        if (cap.Megapixels > 100) Log.Info($"Large capture ({cap.Megapixels:F0} MP). Saving may be slow.");
 
         // Tear down input now the capture is done, so no hook outlives the session.
         hook.Dispose();
@@ -207,7 +207,7 @@ internal sealed class ModeRouter
 
         _sm.TryTransition(AppState.Exporting);
         string path = Exporter.Save(image, Prefs);
-        _notify(copied ? "Copied to clipboard" : "Clipboard unavailable", "Saved " + path, path);
+        NotifyClipboardFailure(clipboard, path);
         WorkflowRunner.MaybeRun(Prefs, "Capture", path, _notify);
     }
 
@@ -402,11 +402,11 @@ internal sealed class ModeRouter
 
             var cap = CaptureEngine.Capture(rect, monitors, Prefs.MatteArgb);
             RememberRect(rect);
-            bool copied = ClipboardWriter.SetImage(cap.Image); // clipboard first: the latency target is hotkey → clipboard
+            ImageClipboardResult clipboard = ClipboardWriter.SetImage(cap.Image);
 
             _sm.TryTransition(AppState.Exporting);
             string path = Exporter.Save(cap.Image, Prefs);
-            _notify(copied ? "Copied to clipboard" : "Clipboard unavailable", "Saved " + path, path);
+            NotifyClipboardFailure(clipboard, path);
             WorkflowRunner.MaybeRun(Prefs, "Capture", path, _notify);
         }
         catch (Exception ex)
@@ -415,5 +415,13 @@ internal sealed class ModeRouter
             _notify("Snipit", "Capture failed: " + ex.Message, null);
         }
         finally { _sm.ForceIdle(); }
+    }
+
+    private void NotifyClipboardFailure(ImageClipboardResult clipboard, string path)
+    {
+        if (clipboard == ImageClipboardResult.Failed)
+            _notify("Clipboard unavailable", "Saved " + path, path);
+        else if (clipboard == ImageClipboardResult.ImageOnly)
+            _notify("JPEG file paste unavailable", "Image copied. Saved " + path, path);
     }
 }

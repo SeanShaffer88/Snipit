@@ -17,7 +17,7 @@ namespace Snipit;
 /// </summary>
 internal static class WorkflowRunner
 {
-    /// <summary>Fire-and-forget entry for the app: runs the workflow assigned to this product kind, then toasts the outcome.</summary>
+    /// <summary>Runs the assigned workflow in the background and reports failures or recording completion.</summary>
     public static void MaybeRun(Preferences prefs, string productKind, string file, Action<string, string, string?> notify)
     {
         string assigned = productKind == "Capture" ? prefs.CaptureWorkflow : prefs.RecordingWorkflow;
@@ -34,7 +34,7 @@ internal static class WorkflowRunner
         {
             var (done, error, working) = Run(def, file, prefs);
             if (error is not null) Tell("Workflow " + def.Name, $"Stopped after {done} step(s): {error}", file);
-            else if (done > 0) Tell("Workflow " + def.Name, $"{done} step(s) done.", working);
+            else if (done > 0 && productKind != "Capture") Tell("Workflow " + def.Name, $"{done} step(s) done.", working);
         });
     }
 
