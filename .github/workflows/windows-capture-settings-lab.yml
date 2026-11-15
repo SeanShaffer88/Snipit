@@ -1,0 +1,52 @@
+name: Windows capture and Settings integration
+
+on:
+  push:
+    branches: [verify/snipit-capture-settings-windows]
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build and self-test
+        shell: pwsh
+        run: |
+          dotnet build Snipit.sln -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Snipit build failed' }
+          dotnet run --project tests/Snipit.SelfTest -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Snipit self-tests failed' }
+
+      - name: Publish exact checkout as self-contained Windows x64
+        id: publish
+        run: dotnet publish src/Snipit.App -c Release -r win-x64 --self-contained true -o dist/files
+
+      - name: Check clipboard image formats and repeated Windows Explorer JPEG paste
+        if: steps.publish.outcome == 'success' && !cancelled()
+        shell: pwsh
+        run: |
+          & "$env:WINDIR/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File tools/windows-capture-settings-lab.ps1 -Scenario Clipboard -AppDirectory dist/files
+          if ($LASTEXITCODE -ne 0) { throw "Clipboard integration exited $LASTEXITCODE" }
+
+      - name: Check compact Settings scrolling, accessibility names, Cancel and Save
+        if: steps.publish.outcome == 'success' && !cancelled()
+        shell: pwsh
+        run: |
+          & "$env:WINDIR/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File tools/windows-capture-settings-lab.ps1 -Scenario Settings -AppDirectory dist/files
+          if ($LASTEXITCODE -ne 0) { throw "Settings integration exited $LASTEXITCODE" }
+
+      - name: Check owned Quick Mode window dispatch and capture notification log
+        if: steps.publish.outcome == 'success' && !cancelled()
+        shell: pwsh
+        run: |
+          & "$env:WINDIR/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File tools/windows-capture-settings-lab.ps1 -Scenario Quick -AppDirectory dist/files
+          if ($LASTEXITCODE -ne 0) { throw "Quick Mode integration exited $LASTEXITCODE" }
