@@ -14,7 +14,8 @@ if (!$IsWindows -or $env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -
 }
 if (Test-Path -LiteralPath $EvidenceDirectory) { throw 'Evidence directory must be new' }
 $evidence = (New-Item -ItemType Directory -Path $EvidenceDirectory).FullName
-$lab = (New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP "snipit-baseline-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT")).FullName
+$labId = [Guid]::NewGuid().ToString('N').Substring(0, 8)
+$lab = (New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP "snipit-baseline-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-$labId")).FullName
 $installedRoot = Join-Path $lab 'installed'
 $portableRoot = Join-Path $lab 'portable'
 $arpKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SeanPak-Snipit'
