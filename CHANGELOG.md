@@ -2,15 +2,17 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.28.1] - 2026-11-14
 
 ### Added
 
-- Installed copies of Snipit start when you sign in to Windows by default. Clear **Start at login** in Settings to turn it off.
+- Installed copies of Snipit start when you sign in to Windows by default. To disable it, clear **Start at login** in **Settings** and select **Save**. Reinstallation preserves your choice. Portable copies leave Windows startup settings untouched.
 
 ### Fixed
 
-- Uninstall removes its own executable and the startup entry. A standard uninstall preserves settings.
+- Both the registered uninstaller and the installer's uninstall option remove `Uninstall.exe` and the Snipit startup entry. A standard uninstall preserves settings.
+
+The Windows lifecycle test verified the startup toggle, upgrades and reinstalls, and settings preservation through both uninstall paths. [Windows test results](https://github.com/SeanShaffer88/Snipit/actions/runs/43656174153)
 
 ## [0.28.0] - 2026-11-14
 
