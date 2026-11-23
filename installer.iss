@@ -3,26 +3,22 @@
 ; ffmpeg, into one Setup.exe. Mirrors the former SeanPak release shape:
 ; Snipit.exe + desktop/start-menu shortcuts + Start at login.
 
-; Versions are kept in one place per release, bumped with Directory.Build.props.
-#define AppVersion "0.29.0"
-#define OutputBaseFilename "Snipit-0.29.0-Setup"
+; Versions are kept in this file alongside Directory.Build.props; bumped per release.
 
 [Setup]
 ; Stable, unique, never changes for this app.
 AppId={{3114132b-886c-4c1f-9e39-8d9cd4fa970d}}
 AppName=Snipit
-AppVersion={#AppVersion}
+AppVersion=0.29.0
 AppPublisher=Sean Shaffer
 AppPublisherURL=https://github.com/SeanShaffer88/Snipit
 DefaultDirName={localappdata}\Programs\Snipit
 DefaultGroupName=Snipit
 PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64
-ArchitecturesAllowed=x64compatible
 OutputDir=dist-installer
-OutputBaseFilename={#OutputBaseFilename}
+OutputBaseFilename=Snipit-0.29.0-Setup
 AppIcon=assets\icon.ico
-SetupLogging=yes
 
 [Files]
 ; Everything the self-contained publish produces, ffmpeg included.
