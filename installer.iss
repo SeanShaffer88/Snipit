@@ -30,6 +30,6 @@ Name: "{group}\Snipit"; Filename: "{app}\Snipit.exe"
 
 [Registry]
 ; Start at login = HKCU Run key, owned by the app (it toggles the same key).
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Snipit"; Value: "\"{app}\Snipit.exe\""; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Snipit"; Value: """{app}\Snipit.exe"""; Flags: uninsdeletevalue
 ; The installed-copy detection key the app reads (StartAtLogin), in the same form SeanPak's uninstaller wrote.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\Snipit"; ValueType: string; ValueName: "InstallLocation"; Value: "{app}"; Flags: uninsdeletevalue
