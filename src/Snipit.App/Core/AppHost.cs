@@ -20,7 +20,6 @@ internal sealed class AppHost : IDisposable
     private SettingsWindow? _settings;
     private RecorderWindow? _recorderWindow;
     private IRecording? _recorder;
-    private DrawOverlayWindow? _drawOverlay;
     private string? _recordPath;
     private System.Windows.Threading.DispatcherTimer? _schedTimer;
     private RecordRequest? _schedReq;
@@ -121,7 +120,6 @@ internal sealed class AppHost : IDisposable
         Item("Full screen now", "Capture the configured monitor straight to the clipboard.", () => _ = _router.RunInstantFullScreenAsync());
         _intervalItem = Item("Start interval capture", "Capture the configured monitor every N seconds into a new folder. Click again to stop.", () => _ = ToggleIntervalAsync());
         Item("Record screen…", "Record a monitor (or the last capture region) to an MP4 video.", ShowRecorder);
-        Item("Draw on screen", "Draw over the screen with the mouse (1-5 change colour, C clears, Esc finishes). Strokes are captured and recorded like anything else on screen.", () => ToggleDrawOverlay());
         _stopRecordItem = Item("Stop recording", "Finish the current recording and save the MP4.", () => _ = StopRecordingAsync());
         Item("Export with FFmpeg…", "Convert a recording or GIF to WebM, AV1, MKV, a palette GIF or audio-only, using the bundled FFmpeg.", () =>
         {
@@ -133,7 +131,7 @@ internal sealed class AppHost : IDisposable
         Item("Repeat last capture", "Capture the same screen rectangle as the previous capture.", () => _ = _router.RunRepeatLastAsync());
         Item("Capture preset region", "Capture the preset region set in Settings.", () => _ = _router.RunPresetAsync());
         m.Items.Add(new WinForms.ToolStripSeparator());
-        _historyItem = new WinForms.ToolStripMenuItem("Recent captures") { ToolTipText = "Reopen a recent capture in the editor (recordings play in your default player)." };
+        _historyItem = new WinForms.ToolStripMenuItem("Recent captures") { ToolTipText = "Reopen a recent capture in the viewer (recordings play in your default player)." };
         m.Items.Add(_historyItem);
         Item("Open output folder", "Open the folder where captures are saved.", () => OpenFolder(Exporter.OutputFolder(_prefs)));
         Item("Open log folder", "Logs stay on this computer.", () => OpenFolder(AppPaths.LogDir));
@@ -234,7 +232,6 @@ internal sealed class AppHost : IDisposable
         _recorderWindow = new RecorderWindow(MonitorEnumerator.Refresh(), _prefs,
             StartRecordingAsync, StopRecordingAsync, paused => _recorder?.SetPaused(paused), RecorderState,
             ScheduleRecording, CancelSchedule, () => _schedReq is not null,
-            m => ToggleDrawOverlay(m),
             () => _router.PickRegionAsync(),
             r => { _prefs.RecordingRegion = new[] { r.X, r.Y, r.Width, r.Height }; SavePrefs(); });
         _recorderWindow.Closed += (_, _) => _recorderWindow = null;
@@ -275,20 +272,6 @@ internal sealed class AppHost : IDisposable
         if (_stopRecordItem is not null) _stopRecordItem.Enabled = true;
         Log.Info($"Recording started: {path}");
         return null;
-    }
-
-    private void ToggleDrawOverlay(MonitorInfo? monitor = null)
-    {
-        if (_drawOverlay is not null) { _drawOverlay.Close(); _drawOverlay = null; return; }
-        var monitors = MonitorEnumerator.Refresh();
-        var (cx, cy) = MonitorEnumerator.CursorPos();
-        MonitorInfo target = monitor
-            ?? VirtualDesktop.MonitorAt(monitors, cx, cy)
-            ?? monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
-        _drawOverlay = new DrawOverlayWindow(target);
-        _drawOverlay.Closed += (_, _) => _drawOverlay = null;
-        _drawOverlay.Show();
-        _drawOverlay.Activate();
     }
 
     private void OnRecordingLimit()

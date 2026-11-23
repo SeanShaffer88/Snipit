@@ -2,6 +2,15 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
+## [0.29.0] - 2026-11-23
+
+### Changed
+
+- Snipit is now a capture-only tool. The mini annotation editor is gone: every editor tool (pen, highlighter, arrow, connector, rectangle, ellipse, text, step markers, blur, crop, resize, watermark, OCR find & replace, brightness/contrast, invert/grayscale, flip/rotate, stamps, blur/spotlight, effects and dialogs) was removed, together with its chrome, dialogs, undo budget, loupe, edge effects, frames and the cut-out plan. The capture history opens a thin viewer that hands the capture where it belongs — clipboard, file, external editor, Explorer — and nothing else.
+- Everything worth keeping moved into the capture pipeline itself: the optional Border/Grayscale auto-effect is baked into every still capture at capture time, and an optional post-capture pass can recognise the text in the image (built-in offline Windows OCR) and copy it to the clipboard alongside the image, or scan it for emails, cards, IPs, phone numbers and key-shaped tokens and cover every match with black boxes before it is saved. Both are off by default in Settings and never block the capture when they fail.
+- Settings: the editor tool-shortcuts toggle and the Frame/Shadow/Edge-depth controls are gone. New toggles: **Copy text** and **Redact sensitive text**.
+- The Draw-on-screen overlay (live pen strokes captured into captures and recordings) was removed — live annotation does not belong on a capture-only product; baked pixels at capture time are the only visual effects.
+
 ## [0.28.4] - 2026-11-23
 
 ### Added

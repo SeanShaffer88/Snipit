@@ -21,14 +21,12 @@ internal sealed class RecorderWindow : Window
     private readonly Func<RecordRequest, string, string, string?> _schedule;
     private readonly Action _cancelSchedule;
     private readonly Func<bool> _isScheduled;
-    private readonly Action<MonitorInfo> _draw;
     private readonly Func<Task<RectPx?>> _pickRegion;
     private readonly Action<RectPx> _saveRegion;
     private RectPx? _regionRect;
     private string _regionSource = "";
     private readonly Button _pickBtn = new() { Content = "Pick region…", Padding = new Thickness(14, 5, 14, 5) };
     private readonly TextBlock _regionInfo = new() { TextWrapping = TextWrapping.Wrap, Foreground = TesselTheme.Muted, Margin = new Thickness(0, 4, 0, 0) };
-    private readonly Button _drawBtn = new() { Content = "Draw on screen", Padding = new Thickness(14, 5, 14, 5) };
     private readonly TextBox _maxMin = new(), _maxMb = new(), _at = new(), _dur = new();
     private readonly Button _scheduleBtn = new() { Content = "Schedule", Padding = new Thickness(14, 5, 14, 5) };
     private readonly ComboBox _monitor = new(), _fps = new(), _quality = new(), _format = new(), _size = new();
@@ -49,10 +47,10 @@ internal sealed class RecorderWindow : Window
         Func<RecordRequest, Task<string?>> start, Func<Task> stop, Action<bool> setPaused,
         Func<(bool Recording, string? Path, TimeSpan Elapsed, bool Paused)> state,
         Func<RecordRequest, string, string, string?> schedule, Action cancelSchedule, Func<bool> isScheduled,
-        Action<MonitorInfo> draw, Func<Task<RectPx?>> pickRegion, Action<RectPx> saveRegion)
+        Func<Task<RectPx?>> pickRegion, Action<RectPx> saveRegion)
     {
         _monitors = monitors; _start = start; _stop = stop; _setPaused = setPaused; _state = state;
-        _schedule = schedule; _cancelSchedule = cancelSchedule; _isScheduled = isScheduled; _draw = draw;
+        _schedule = schedule; _cancelSchedule = cancelSchedule; _isScheduled = isScheduled;
         _pickRegion = pickRegion; _saveRegion = saveRegion;
         Title = "Snipit — Record screen";
         SizeToContent = SizeToContent.WidthAndHeight; ResizeMode = ResizeMode.NoResize;
@@ -105,12 +103,6 @@ internal sealed class RecorderWindow : Window
         _dur.ToolTip = "How many minutes the scheduled recording runs. 0 = until you stop it.";
         _scheduleBtn.ToolTip = "Arms a one-shot scheduled recording with the settings above.";
         _scheduleBtn.Click += (_, _) => OnSchedule();
-        _drawBtn.ToolTip = "Draw over the selected monitor with the mouse — the strokes appear in the recording. 1-5 change colour, C clears, Esc finishes.";
-        _drawBtn.Click += (_, _) =>
-        {
-            int idx = Math.Clamp(_monitor.SelectedIndex, 0, _monitors.Count - 1);
-            _draw(_monitors[idx]);
-        };
         _toggle.ToolTip = "Starts or stops the recording. Recordings save as MP4 in the output folder.";
         _pauseBtn.ToolTip = "Pauses the recording — the paused time is cut from the video and the audio. Resume continues seamlessly.";
         _pauseBtn.Click += (_, _) => { var (_, _, _, paused) = _state(); _setPaused(!paused); Refresh(); };
@@ -148,7 +140,6 @@ internal sealed class RecorderWindow : Window
         Add("Start at", _at);
         Add("For minutes", _dur);
         Add("", _scheduleBtn);
-        Add("", _drawBtn);
         Add("", _status);
         Add("", _error);
         Content = grid;

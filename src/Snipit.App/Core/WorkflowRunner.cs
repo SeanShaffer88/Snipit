@@ -106,8 +106,7 @@ internal static class WorkflowRunner
                 int w = src.PixelWidth, h = src.PixelHeight, stride = w * 4;
                 var px = new byte[stride * h];
                 src.CopyPixels(px, stride, 0);
-                if (step.Arg == "Grayscale") PixelAdjust.Grayscale(px);
-                else PixelAdjust.Border(px, w, h, Math.Max(2, Math.Min(w, h) / 120), 0, 0, 0);
+                AutoEffects.Apply(px, w, h, step.Arg);
                 var bmp = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, px, stride);
                 bmp.Freeze();
                 string sibling = OutputNaming.UniquePath(
