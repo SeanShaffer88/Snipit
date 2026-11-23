@@ -2,6 +2,16 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Press Print Screen again while the capture toolbox is open to cancel the activation (it discards the pick and closes the toolbox, like an undo; no capture is taken). The same key while a countdown is running cancels the countdown.
+
+### Fixed
+
+- The capture interface now leaves the screen as soon as the capture is done — the overlays are hidden and actually closed before the clipboard and save work starts, which was blocking the UI for hundreds of milliseconds and left the interface on screen until the save finished. The countdown chip closes and is destroyed before the capture starts.
+
 ## [0.28.3] - 2026-11-15
 
 ### Added

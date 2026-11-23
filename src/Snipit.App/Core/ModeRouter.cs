@@ -23,6 +23,12 @@ internal sealed class ModeRouter
     public Preferences Prefs { get; set; }
     public bool IsBusy => _sm.State != AppState.Idle;
 
+    /// <summary>The session's live cancellation source, so the hotkey can cancel the session the user is in.</summary>
+    private CancellationTokenSource? _sessionCts;
+
+    /// <summary>Cancels the running session as if Esc was pressed at the top of the toolbox (the Print Screen key again). No-op when idle.</summary>
+    public void Cancel() => _sessionCts?.Cancel();
+
     /// <summary>Rectangle of the most recent capture (physical px), for "repeat last". Persisted, so it survives a restart; use re-validates it against the current desktop.</summary>
     public RectPx? LastRect { get; private set; }
 
@@ -40,6 +46,7 @@ internal sealed class ModeRouter
         if (IsBusy) return;
         _sm.TryTransition(AppState.ModeMenu);
         using var cts = new CancellationTokenSource();
+        _sessionCts = cts;
         var monitors = MonitorEnumerator.Refresh();
         using var overlays = new OverlayHost(monitors, OverlayStyle.From(Prefs));
         using var hook = new InputHook();
@@ -100,6 +107,11 @@ internal sealed class ModeRouter
             _sm.TryTransition(AppState.Captured);
             await FinishCaptureAsync(result, ctx, overlays, hook, cts.Token);
         }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            // Cancelled by the user (Print Screen again, panic Esc, watchdog): not a failure.
+            Log.Info("Capture session cancelled");
+        }
         catch (Exception ex)
         {
             Log.Error("Capture session failed", ex);
@@ -109,8 +121,9 @@ internal sealed class ModeRouter
         {
             dog.Stop();
             hook.Dispose();
-            overlays.Dispose();
+            await overlays.CloseAndAwaitAsync();
             _sm.ForceIdle();
+            _sessionCts = null;
         }
     }
 
@@ -120,14 +133,16 @@ internal sealed class ModeRouter
         if (IsBusy) return;
         _sm.TryTransition(AppState.ModeMenu);
         DispatcherTimer? dog = null;
+        OverlayHost? overlays = null;
+        var cts = new CancellationTokenSource();
+        _sessionCts = cts;
         try
         {
             var monitors = MonitorEnumerator.Refresh();
             var desktop = VirtualDesktop.Union(monitors);
             // Capture can wait for the graphics backend. Finish before showing overlays or installing hooks.
             var snapshot = await Task.Run(() => CaptureEngine.Capture(desktop, monitors, 0xFF000000u));
-            using var cts = new CancellationTokenSource();
-            using var overlays = new OverlayHost(monitors, OverlayStyle.From(Prefs));
+            overlays = new OverlayHost(monitors, OverlayStyle.From(Prefs));
             using var hook = new InputHook();
             hook.PanicEscape = cts.Cancel;   // Esc three times quickly always ends the session, whatever the picker is doing
             var ctx = new PickerContext { Overlays = overlays, Hook = hook, Prefs = Prefs, Uia = _uia };
@@ -148,6 +163,11 @@ internal sealed class ModeRouter
                 _persistPrefs();   // remembers the chosen format
             }
         }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            // Cancelled by the user (Print Screen again): not a failure.
+            Log.Info("Colour picker cancelled");
+        }
         catch (Exception ex)
         {
             Log.Error("Colour picker failed", ex);
@@ -156,7 +176,10 @@ internal sealed class ModeRouter
         finally
         {
             dog?.Stop();
+            if (overlays is not null) await overlays.CloseAndAwaitAsync();
             _sm.ForceIdle();
+            _sessionCts = null;
+            cts.Dispose();
         }
     }
 
@@ -192,6 +215,12 @@ internal sealed class ModeRouter
             if (result.Polygon is { } polygon) cap = MaskOutside(cap, polygon);
             else if (result.Areas is { Count: > 1 } areas) cap = MaskAreas(cap, areas);
         }
+
+        // The capture is done: tear the interface down now, before the clipboard and save work
+        // below blocks the UI thread, so the toolbox disappears right away.
+        hook.Dispose();
+        await overlays.CloseAndAwaitAsync();
+
         RememberRect(rect);
         // Captures never open the editor (owner direction, 2026-11-13): clipboard
         // + file + workflow, always. The editor remains for deliberate opens only
@@ -200,10 +229,6 @@ internal sealed class ModeRouter
         var image = ApplyAutoEffect(cap.Image);
         ImageClipboardResult clipboard = ClipboardWriter.SetImage(image);
         if (cap.Megapixels > 100) Log.Info($"Large capture ({cap.Megapixels:F0} MP). Saving may be slow.");
-
-        // Tear down input now the capture is done, so no hook outlives the session.
-        hook.Dispose();
-        overlays.Dispose();
 
         _sm.TryTransition(AppState.Exporting);
         string path = Exporter.Save(image, Prefs);
@@ -245,6 +270,7 @@ internal sealed class ModeRouter
         if (IsBusy) return null;
         _sm.TryTransition(AppStateMachine.ForMode(PickMode.Region));
         using var cts = new CancellationTokenSource();
+        _sessionCts = cts;
         var monitors = MonitorEnumerator.Refresh();
         using var overlays = new OverlayHost(monitors, OverlayStyle.From(Prefs));
         using var hook = new InputHook();
@@ -271,7 +297,9 @@ internal sealed class ModeRouter
         finally
         {
             dog.Stop();
+            await overlays.CloseAndAwaitAsync();
             _sm.TryTransition(AppState.Idle);
+            _sessionCts = null;
         }
     }
 
@@ -379,6 +407,8 @@ internal sealed class ModeRouter
     private async Task RunInstantAsync(Func<IReadOnlyList<MonitorInfo>, RectPx?> resolve, int delay, string label)
     {
         _sm.TryTransition(AppState.FullScreenInstant);
+        var cts = new CancellationTokenSource();
+        _sessionCts = cts;
         try
         {
             var monitors = MonitorEnumerator.Current;
@@ -388,7 +418,7 @@ internal sealed class ModeRouter
                 using var hook = new InputHook();
                 hook.Start();
                 var where = VirtualDesktop.MonitorAt(monitors, cx, cy) ?? monitors[0];
-                if (!await DelayTimer.RunAsync(delay, hook, where, CancellationToken.None)) return;
+                if (!await DelayTimer.RunAsync(delay, hook, where, cts.Token)) return;
             }
 
             monitors = MonitorEnumerator.Refresh();
@@ -414,7 +444,12 @@ internal sealed class ModeRouter
             Log.Error(label + " failed", ex);
             _notify("Snipit", "Capture failed: " + ex.Message, null);
         }
-        finally { _sm.ForceIdle(); }
+        finally
+        {
+            _sessionCts = null;
+            cts.Dispose();
+            _sm.ForceIdle();
+        }
     }
 
     private void NotifyClipboardFailure(ImageClipboardResult clipboard, string path)

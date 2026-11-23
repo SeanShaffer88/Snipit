@@ -95,7 +95,25 @@ internal static class DelayTimer
         finally
         {
             hook.ClearHandlers();
-            chip.Close();
+            await CloseAndAwaitAsync(chip);
         }
+    }
+
+    /// <summary>
+    /// Closes the chip and waits until it is actually destroyed. The caller runs the heavy capture +
+    /// export that blocks the UI thread right afterwards, so awaiting here is what makes the chip
+    /// gone right away instead of only after that work.
+    /// </summary>
+    private static async Task CloseAndAwaitAsync(CountdownChip chip)
+    {
+        try
+        {
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            chip.Closed += (_, _) => tcs.TrySetResult();
+            chip.Hide();
+            chip.Close();
+            await tcs.Task;
+        }
+        catch (InvalidOperationException) { /* already closing: nothing to wait for */ }
     }
 }

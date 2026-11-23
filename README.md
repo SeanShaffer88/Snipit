@@ -41,6 +41,7 @@ Paste a capture into an image-aware app as PNG or bitmap, or paste into a File E
 | Action | Default |
 |---|---|
 | Open capture toolbox | Left-click the tray icon, choose **Capture…**, or press Print Screen with Quick Mode off |
+| Cancel the toolbox | Press Print Screen again while it is open (it cancels the capture session; Esc backs out one step) |
 | Full screen | `D` for the current monitor, `F` for all monitors, or `1`–`9` for a numbered monitor in the mode bar |
 | Active window | Window mode in the mode bar |
 | Repeat last capture | Tray menu |
