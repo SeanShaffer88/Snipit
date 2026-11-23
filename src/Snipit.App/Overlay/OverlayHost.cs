@@ -22,9 +22,9 @@ internal sealed class OverlayHost : IDisposable
 
     public void Show() { foreach (var w in _wins) w.Show(); }
 
-    public void HideAll() { foreach (var w in _wins) w.Visibility = Visibility.Hidden; }
+    public void HideAll() { foreach (var w in _wins) w.Hide(); }
 
-    public void ShowAll() { foreach (var w in _wins) w.Visibility = Visibility.Visible; }
+    public void ShowAll() { foreach (var w in _wins) w.Show(); }
 
     /// <summary>
     /// Hide before the frame is pulled (§4.1). When every overlay is excluded from capture by the OS
@@ -32,7 +32,7 @@ internal sealed class OverlayHost : IDisposable
     /// </summary>
     public async Task HideForCaptureAsync()
     {
-        if (_wins.Count == 0 || _wins.All(w => w.Visibility != Visibility.Visible)) return;
+        if (_wins.Count == 0 || _wins.All(w => !w.IsVisible)) return;
         if (AllExcludedFromCapture) { HideAll(); return; }
 
         var tcs = new TaskCompletionSource();
@@ -128,5 +128,32 @@ internal sealed class OverlayHost : IDisposable
         _disposed = true;
         foreach (var w in _wins) { try { w.Close(); } catch (InvalidOperationException) { } }
         _wins.Clear();
+    }
+
+    /// <summary>
+    /// Hides and closes every window, waiting until each is actually destroyed. The caller runs the
+    /// heavy clipboard/export work that blocks the UI thread right afterwards, so awaiting the close
+    /// here is what makes the interface disappear right away instead of after that work.
+    /// </summary>
+    public async Task CloseAndAwaitAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        var windows = new List<OverlayWindow>(_wins);
+        _wins.Clear();
+        var pending = new List<Task>(windows.Count);
+        foreach (var w in windows)
+        {
+            try
+            {
+                var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                w.Closed += (_, _) => tcs.TrySetResult();
+                w.Hide();
+                w.Close();
+                pending.Add(tcs.Task);
+            }
+            catch (InvalidOperationException) { /* window already closing: nothing to wait for */ }
+        }
+        await Task.WhenAll(pending);
     }
 }

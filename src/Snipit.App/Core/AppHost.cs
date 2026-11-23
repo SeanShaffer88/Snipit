@@ -82,6 +82,8 @@ internal sealed class AppHost : IDisposable
         _hotkeys.HotkeyPressed += id =>
         {
             if (id != HotkeyManager.IdMenu) return;
+            // Print Screen again while a session is open = undo the activation: cancel the toolbox.
+            if (_router.IsBusy) { _router.Cancel(); return; }
             _ = _prefs.QuickMode ? _router.RunInstantFullScreenAsync(overrideDelay: 0) : _router.RunSessionAsync();
         };
         _hotkeys.RegisterPrintScreen();
