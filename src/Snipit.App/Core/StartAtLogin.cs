@@ -6,7 +6,9 @@ namespace Snipit;
 /// <summary>Manages the per-user startup entry shared with the installer.</summary>
 internal static class StartAtLogin
 {
-    private const string InstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\SeanPak-Snipit";
+    private const string InstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Snipit";
+    // Deprecated: the key SeanPak's uninstaller wrote, still honoured for installs it made.
+    private const string LegacyInstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\SeanPak-Snipit";
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunName = "Snipit";
 
@@ -80,12 +82,16 @@ internal static class StartAtLogin
 
     private static string? InstalledExecutable()
     {
-        using var key = Registry.CurrentUser.OpenSubKey(InstallKey);
-        if (key?.GetValue("InstallLocation", null, RegistryValueOptions.DoNotExpandEnvironmentNames)
-            is not string directory || !Path.IsPathFullyQualified(directory))
-            return null;
-        string exe = Path.Combine(directory, "Snipit.exe");
-        return string.Equals(Path.GetFullPath(exe), Environment.ProcessPath, StringComparison.OrdinalIgnoreCase)
-            ? exe.Replace('/', '\\') : null;
+        foreach (var keyPath in new[] { InstallKey, LegacyInstallKey })
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(keyPath);
+            if (key?.GetValue("InstallLocation", null, RegistryValueOptions.DoNotExpandEnvironmentNames)
+                is not string directory || !Path.IsPathFullyQualified(directory))
+                continue;
+            string exe = Path.Combine(directory, "Snipit.exe");
+            if (string.Equals(Path.GetFullPath(exe), Environment.ProcessPath, StringComparison.OrdinalIgnoreCase))
+                return exe.Replace('/', '\\');
+        }
+        return null;
     }
 }
