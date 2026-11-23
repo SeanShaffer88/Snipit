@@ -2,8 +2,9 @@
 ; Packages the self-contained publish output (dist/files) with the bundled
 ; ffmpeg, into one Setup.exe. Mirrors the former SeanPak release shape:
 ; Snipit.exe + desktop/start-menu shortcuts + Start at login.
-
-; Versions are kept in this file alongside Directory.Build.props; bumped per release.
+;
+; Version and output filename are kept in this file alongside
+; Directory.Build.props; bumped per release.
 
 [Setup]
 ; Stable, unique, never changes for this app.
@@ -18,11 +19,11 @@ PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64
 OutputDir=dist-installer
 OutputBaseFilename=Snipit-0.29.0-Setup
-AppIcon=assets\icon.ico
+SetupIconFile=assets\icon.ico
 
 [Files]
 ; Everything the self-contained publish produces, ffmpeg included.
-Source: "dist\files\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+Source: "dist\files\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autodesktop}\Snipit"; Filename: "{app}\Snipit.exe"
@@ -30,6 +31,6 @@ Name: "{group}\Snipit"; Filename: "{app}\Snipit.exe"
 
 [Registry]
 ; Start at login = HKCU Run key, owned by the app (it toggles the same key).
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Snipit"; Value: """{app}\Snipit.exe"""; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Snipit"; ValueData: """{app}\Snipit.exe"""; Flags: uninsdeletevalue
 ; The installed-copy detection key the app reads (StartAtLogin), in the same form SeanPak's uninstaller wrote.
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\Snipit"; ValueType: string; ValueName: "InstallLocation"; Value: "{app}"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\Snipit"; ValueType: string; ValueName: "InstallLocation"; ValueData: "{app}"; Flags: uninsdeletevalue

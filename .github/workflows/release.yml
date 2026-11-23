@@ -52,28 +52,9 @@ jobs:
       - name: Build the installer (Inno Setup)
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Continue'
           $iscc = Get-ChildItem -Path "C:\Program Files*\Inno Setup*\ISCC.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
-          if (-not $iscc) {
-            "ISCC.exe not found under 'C:\Program Files*\Inno Setup*'" | Set-Content iscc-output.txt
-            Get-ChildItem -Path "C:\Program Files*\Inno Setup*" -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object FullName | ForEach-Object { $_.FullName } | Set-Content iscc-output.txt -Append
-            exit 1
-          }
-          "ISCC path: $iscc" | Set-Content iscc-output.txt
-          "--- ISCC output ---" | Add-Content iscc-output.txt
-          $out = & $iscc installer.iss 2>&1
-          "$out" | Out-String | Set-Content iscc-output.txt -Append
-          "--- ISCC exit: $LASTEXITCODE ---" | Add-Content iscc-output.txt
-          Write-Host "$out"
-          exit $LASTEXITCODE
-
-      - name: Upload the ISCC diagnostic log
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: iscc-diagnostic
-          path: iscc-output.txt
-          if-no-files-found: ignore
+          if (-not $iscc) { throw "Inno Setup not found on the runner (ISCC.exe)." }
+          & $iscc installer.iss
 
       - name: Compress the portable ZIP (Deflate, same payload)
         shell: pwsh
