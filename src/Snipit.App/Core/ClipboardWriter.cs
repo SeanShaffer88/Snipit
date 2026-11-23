@@ -29,8 +29,9 @@ internal static class ClipboardWriter
         }
     }
 
-    /// <summary>Copies image formats and a JPEG file drop when staging succeeds.</summary>
-    public static ImageClipboardResult SetImage(BitmapSource image)
+    /// <summary>Copies image formats and a JPEG file drop when staging succeeds. <paramref name="text"/> is laid onto the
+    /// same clipboard as a plain-text format (e.g. recognised capture text), so it never replaces the image.</summary>
+    public static ImageClipboardResult SetImage(BitmapSource image, string? text = null)
     {
         try
         {
@@ -44,6 +45,7 @@ internal static class ClipboardWriter
             var data = new DataObject();
             data.SetImage(image);          // CF_DIB / CF_BITMAP
             data.SetData("PNG", png);      // lossless, keeps transparency for apps that understand it
+            if (!string.IsNullOrWhiteSpace(text)) data.SetText(text.Trim());
             try
             {
                 string path = ClipboardJpeg.Stage(image);
@@ -62,6 +64,7 @@ internal static class ClipboardWriter
             imageOnly.SetImage(image);
             png.Position = 0;
             imageOnly.SetData("PNG", png);
+            if (!string.IsNullOrWhiteSpace(text)) imageOnly.SetText(text.Trim());
             Publish(imageOnly);
             return ImageClipboardResult.ImageOnly;
         }

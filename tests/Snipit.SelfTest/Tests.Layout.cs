@@ -126,29 +126,19 @@ static partial class Tests
             Check(PipLayout.DestRect(100, 100, 640, 360, PipCorner.BottomRight).Width <= 50, "pip: tiny frames clamp the overlay to half");
         }
 
-        Console.WriteLine("Editor plans (resize / watermark / text replace / border)");
+        Console.WriteLine("AutoEffects");
         {
-            Check(ResizePlan.FromWidth(1920, 1080, 960) == (960, 540), "resize: halving width halves height");
-            Check(ResizePlan.FromHeight(1920, 1080, 540) == (960, 540), "resize: from height keeps aspect");
-            Check(ResizePlan.FromWidth(100, 100, 5).W == ResizePlan.MinDim, "resize: dimensions clamp at the minimum");
-            Check(WatermarkPlan.CornerOrigin(800, 600, 100, 20) == (800 - 112, 600 - 32), "watermark: corner origin leaves a margin");
-            Check(WatermarkPlan.TileOrigins(300, 200, 150, 100).Count == 4, "watermark: tile grid covers the image");
-            var words = new List<OcrWord>
-            {
-                new("Hello", new RectPx(0, 0, 40, 10)), new("brave", new RectPx(45, 0, 40, 10)),
-                new("new", new RectPx(90, 0, 20, 10)), new("WORLD", new RectPx(115, 0, 40, 10)),
-                new("hello", new RectPx(0, 20, 40, 10)),
-            };
-            var tm1 = TextReplace.Find(words, "hello");
-            Check(tm1.Count == 2 && tm1[0].StartWord == 0 && tm1[1].StartWord == 4, "replace: single word matches case-insensitively, repeatedly");
-            var tm2 = TextReplace.Find(words, "brave new");
-            Check(tm2.Count == 1 && tm2[0].WordCount == 2 && tm2[0].Union.X == 45 && tm2[0].Union.Right == 110, "replace: multi-word match unions the rectangles");
-            Check(TextReplace.Find(words, "absent").Count == 0 && TextReplace.Find(words, "  ").Count == 0, "replace: no match and empty query are safe");
-
             var img = new byte[4 * 4 * 4];
             PixelAdjust.Border(img, 4, 4, 1, 255, 0, 0);
             Check(img[2] == 255 && img[0] == 0 && img[(1 * 4 + 1) * 4 + 2] == 0, "border: frame painted, interior untouched");
             Check(AutoEffects.Sanitize("Border") == "Border" && AutoEffects.Sanitize("x") == "None", "auto effect: sanitize");
+            var bake = new byte[] { 255, 0, 0, 255, 0, 0, 0, 255 };
+            AutoEffects.Apply(bake, 2, 1, "Grayscale");
+            Check(bake[0] == 29 && bake[1] == 29 && bake[2] == 29 && bake[3] == 255, "auto effect: grayscale bakes over the whole image");
+            Check(bake[4] == 0 && bake[5] == 0 && bake[6] == 0 && bake[7] == 255, "auto effect: grayscale leaves a black pixel black");
+            var none = new byte[] { 0, 255, 0, 77 };
+            AutoEffects.Apply(none, 1, 1, "None");
+            Check(none.SequenceEqual(new byte[] { 0, 255, 0, 77 }), "auto effect: None leaves the pixels alone");
         }
 
         Console.WriteLine("PolygonMask + ColorReadout");
@@ -190,18 +180,6 @@ static partial class Tests
             Check(WorkflowPlan.Find(wfDefs, "archive")?.Name == "Archive" && WorkflowPlan.Find(wfDefs, "nope") is null, "workflow: find by name, case-insensitive");
         }
 
-
-        Console.WriteLine("ConnectorRoute");
-        {
-            var h = ConnectorRoute.Elbow(0, 0, 100, 40);
-            Check(h.Length == 3 && h[1] == (100, 0) && h[2] == (100, 40), "wide drag bends horizontal first");
-            var v = ConnectorRoute.Elbow(0, 0, 40, 100);
-            Check(v.Length == 3 && v[1] == (0, 100), "tall drag bends vertical first");
-            Check(ConnectorRoute.Elbow(10, 10, 200, 12).Length == 2, "near-flat drag stays a straight line");
-            var back = ConnectorRoute.Elbow(100, 100, 20, 60);
-            Check(back[0] == (100, 100) && back[1] == (20, 100) && back[2] == (20, 60), "leftward drag keeps start and end");
-            Check(ConnectorRoute.Elbow(5, 5, 5, 5).Length == 2, "zero-length drag is two points");
-        }
 
         Console.WriteLine("PolygonBuilder");
         {

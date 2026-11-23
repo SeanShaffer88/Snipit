@@ -20,7 +20,7 @@ public sealed class Preferences
     public double DimmerOpacity { get; set; } = 0.47;
     public bool HighContrastHighlight { get; set; }
     public string MatteColor { get; set; } = "Transparent";
-    /// <summary>Editor window x,y,width,height in physical pixels; null = never saved.</summary>
+    /// <summary>Viewer window x,y,width,height in physical pixels; null = never saved.</summary>
     public int[]? EditorBounds { get; set; }
     /// <summary>Last capture rectangle x,y,width,height in physical pixels, so "repeat last" survives a restart; null = none yet.</summary>
     public int[]? LastCaptureRect { get; set; }
@@ -45,11 +45,15 @@ public sealed class Preferences
     public int RecordMaxMinutes { get; set; }
     /// <summary>Stop a recording when the file reaches this many MB (0 = no limit).</summary>
     public int RecordMaxMb { get; set; }
-    /// <summary>Effect applied automatically when a capture opens in the editor (AutoEffects names).</summary>
+    /// <summary>Effect baked into every still capture (AutoEffects names).</summary>
     public string AutoEffect { get; set; } = AutoEffects.Default;
+    /// <summary>Recognise a capture's text with the built-in Windows OCR and copy it to the clipboard alongside the image. Off by default (OCR is not free in time or battery).</summary>
+    public bool CopyTextAfterCapture { get; set; }
+    /// <summary>Scan a capture for sensitive text (emails, cards, IPs, phone numbers, key-shaped tokens) and cover it with black boxes before it is saved. Off by default.</summary>
+    public bool RedactAfterCapture { get; set; }
     /// <summary>Preset capture rectangle x,y,width,height in physical pixels; null = not set.</summary>
     public int[]? PresetRect { get; set; }
-    /// <summary>External image editor executable for the editor's "External editor…" button. Empty = none.</summary>
+    /// <summary>External image editor executable for the viewer's "External editor…" button. Empty = none.</summary>
     public string ExternalEditorPath { get; set; } = "";
     /// <summary>Override path to an ffmpeg.exe. Empty = use the bundled FFmpeg (owner-approved bundle, 2026-11-13).</summary>
     public string FfmpegPath { get; set; } = "";
@@ -65,16 +69,6 @@ public sealed class Preferences
     public string ColorFormatName { get; set; } = ColorFormat.Default;
     /// <summary>Capture mode bar position along the top edge: its centre as a fraction of the monitor width. Saved after each drag.</summary>
     public double ModeBarCenter { get; set; } = ModeBarLayout.DefaultCenter;
-    /// <summary>Editor Frame border width in pixels; 0 = automatic by image size.</summary>
-    public int FrameThickness { get; set; }
-    /// <summary>Editor Frame colour, six hex digits.</summary>
-    public string FrameColor { get; set; } = EffectSettings.DefaultFrameColor;
-    /// <summary>Editor Shadow blur radius in pixels; 0 = automatic by image size.</summary>
-    public int ShadowBlur { get; set; }
-    /// <summary>Editor Shadow opacity, percent.</summary>
-    public int ShadowOpacityPercent { get; set; } = EffectSettings.DefaultShadowOpacity;
-    /// <summary>Editor Torn and Wave cut depth in pixels; 0 = automatic by image size.</summary>
-    public int EdgeDepth { get; set; }
     public string CaptureWorkflow { get; set; } = "";
     /// <summary>Workflow auto-run after a recording is saved; empty = none.</summary>
     public string RecordingWorkflow { get; set; } = "";
@@ -84,9 +78,6 @@ public sealed class Preferences
     public bool PrintScreenPriorRecorded { get; set; }
     /// <summary>False when the user hid the tray icon from its context menu. Running Snipit again brings it back.</summary>
     public bool ShowTrayIcon { get; set; } = true;
-
-    /// <summary>Single-letter tool keys in the editor (P pen, H highlight, A arrow, R rect, O ellipse, T text, N step, K callout, G stamp, B blur, S spotlight, M magnify, C crop, X cut). Turn off if they clash with your assistive technology.</summary>
-    public bool EditorToolHotkeys { get; set; } = true;
 
     /// <summary>Matte for monitor-layout gaps as 0xAARRGGBB.</summary>
     public uint MatteArgb => MatteColor switch
@@ -135,11 +126,6 @@ public sealed class Preferences
         ExternalEditorPath = (ExternalEditorPath ?? "").Trim();
         FfmpegPath = (FfmpegPath ?? "").Trim();
         ColorFormatName = ColorFormat.Sanitize(ColorFormatName);
-        FrameThickness = Math.Clamp(FrameThickness, 0, ImageFrames.MaxThickness);
-        FrameColor = EffectSettings.SanitizeColor(FrameColor);
-        ShadowBlur = Math.Clamp(ShadowBlur, 0, ImageFrames.MaxBlur);
-        ShadowOpacityPercent = Math.Clamp(ShadowOpacityPercent, 0, 100);
-        EdgeDepth = Math.Clamp(EdgeDepth, 0, EdgeEffects.MaxDepth);
         ModeBarCenter = ModeBarLayout.SanitizeCenter(ModeBarCenter);
         WorkflowTrust ??= "";
         Workflows ??= new();

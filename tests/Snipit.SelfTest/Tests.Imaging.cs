@@ -38,51 +38,37 @@ static partial class Tests
         Console.WriteLine("PixelAdjust");
         {
             bool Throws(Action a) { try { a(); return false; } catch (ArgumentException) { return true; } }
-            byte[] Ids(params int[] ids) { var b = new byte[ids.Length * 4]; for (int i = 0; i < ids.Length; i++) { b[i * 4] = b[i * 4 + 1] = b[i * 4 + 2] = (byte)ids[i]; b[i * 4 + 3] = 255; } return b; }
-            bool Same(byte[] a, byte[] b) => a.SequenceEqual(b);
-
-            var inv = new byte[] { 10, 20, 30, 40 };
-            PixelAdjust.Invert(inv);
-            Check(Same(inv, new byte[] { 245, 235, 225, 40 }), "invert: channels flip, alpha untouched");
-            PixelAdjust.Invert(inv);
-            Check(Same(inv, new byte[] { 10, 20, 30, 40 }), "invert: twice is identity");
+            Check(Throws(() => PixelAdjust.Grayscale(new byte[3])), "pixel ops: partial pixel rejected");
+            Check(Throws(() => PixelAdjust.Border(new byte[0], 0, 0, 0, 0, 0, 0)), "frame ops: zero width rejected");
+            Check(Throws(() => PixelAdjust.Border(new byte[4], 4, 4, 1, 0, 0, 0)), "frame ops: buffer/size mismatch rejected");
 
             var grey = new byte[] { 0, 0, 255, 255, 0, 255, 0, 255, 255, 0, 0, 255, 255, 255, 255, 200 };
             PixelAdjust.Grayscale(grey);
             Check(grey[0] == 76 && grey[4] == 150 && grey[8] == 29 && grey[12] == 255, "grayscale: Rec.601 luma for red/green/blue/white");
             Check(grey[0] == grey[1] && grey[1] == grey[2] && grey[15] == 200, "grayscale: channels equalised, alpha untouched");
+        }
 
-            var bc = Ids(100, 200, 28);
-            PixelAdjust.BrightnessContrast(bc, 0, 1.0);
-            Check(Same(bc, Ids(100, 200, 28)), "brightness/contrast: (0, 1.0) is identity");
-            PixelAdjust.BrightnessContrast(bc, 0, 2.0);
-            Check(Same(bc, Ids(72, 255, 0)), "brightness/contrast: contrast 2 about midpoint, clamped both ends");
-            var flatBc = Ids(10, 250);
-            PixelAdjust.BrightnessContrast(flatBc, 0, 0.0);
-            Check(Same(flatBc, Ids(128, 128)), "brightness/contrast: contrast 0 -> flat mid-grey");
-            var bright = Ids(100);
-            PixelAdjust.BrightnessContrast(bright, 999, 1.0);
-            Check(Same(bright, Ids(255)), "brightness/contrast: brightness input clamps to +255");
-            Check(Throws(() => PixelAdjust.BrightnessContrast(Ids(1), 0, -0.5)), "brightness/contrast: negative contrast rejected");
-
-            var fh = Ids(0, 1, 2, 3);
-            PixelAdjust.FlipHorizontal(fh, 2, 2);
-            Check(Same(fh, Ids(1, 0, 3, 2)), "flip horizontal: columns swap");
-            var fv = Ids(0, 1, 2, 3);
-            PixelAdjust.FlipVertical(fv, 2, 2);
-            Check(Same(fv, Ids(2, 3, 0, 1)), "flip vertical: rows swap");
-            PixelAdjust.FlipHorizontal(fh, 2, 2); PixelAdjust.FlipVertical(fv, 2, 2);
-            Check(Same(fh, Ids(0, 1, 2, 3)) && Same(fv, Ids(0, 1, 2, 3)), "flips: twice is identity");
-
-            var (rot, rw, rh) = PixelAdjust.Rotate90Clockwise(Ids(0, 1, 2, 3, 4, 5), 2, 3);
-            Check(rw == 3 && rh == 2 && Same(rot, Ids(4, 2, 0, 5, 3, 1)), "rotate 90 CW: dims swap, pixels land exactly");
-            var spin = Ids(0, 1, 2, 3, 4, 5); int sw = 2, sh = 3;
-            for (int i = 0; i < 4; i++) (spin, sw, sh) = PixelAdjust.Rotate90Clockwise(spin, sw, sh);
-            Check(sw == 2 && sh == 3 && Same(spin, Ids(0, 1, 2, 3, 4, 5)), "rotate: four quarter-turns is identity");
-
-            Check(Throws(() => PixelAdjust.FlipHorizontal(Ids(0, 1, 2), 2, 2)), "frame ops: buffer/size mismatch rejected");
-            Check(Throws(() => PixelAdjust.Rotate90Clockwise(Ids(0), 0, 1)), "frame ops: zero width rejected");
-            Check(Throws(() => PixelAdjust.Invert(new byte[3])), "pixel ops: partial pixel rejected");
+        Console.WriteLine("Redaction");
+        {
+            // 4x2 image, every pixel greyish with alpha 255. Pixel (x,y) sits at ((y * 4 + x) * 4) bytes.
+            var px = new byte[4 * 2 * 4];
+            for (int i = 0; i < px.Length; i += 4) { px[i] = 9; px[i + 1] = 45; px[i + 2] = 81; px[i + 3] = 255; }
+            Redaction.FillRectangles(px, 4, 2, new[] { new RectPx(1, 0, 2, 1) });
+            // The hit box (x 1..2, y 0) is solid opaque black.
+            Check(px[4] == 0 && px[5] == 0 && px[6] == 0 && px[7] == 255, "redact: hit rectangle pixels are opaque black");
+            Check(px[8] == 0 && px[9] == 0 && px[10] == 0 && px[11] == 255, "redact: hit rectangle pixels are opaque black (right half)");
+            // Untouched pixels keep their colour: (0,0), (3,0), (0,1), (1,1), (3,1).
+            Check(px[0] == 9 && px[3] == 255 && px[12] == 9 && px[16] == 9 && px[20] == 9 && px[28] == 9 && px[31] == 255, "redact: untouched pixels keep their colour");
+            // Clipping: a part-off-frame rectangle only fills what is in frame; an outside one is ignored.
+            var px2 = new byte[4 * 2 * 4];
+            for (int i = 0; i < px2.Length; i += 4) { px2[i] = 7; px2[i + 3] = 255; }
+            Redaction.FillRectangles(px2, 4, 2, new[] { new RectPx(-2, -2, 4, 4), new RectPx(99, 99, 5, 5) });
+            int filled = 0;
+            for (int i = 0; i < px2.Length; i += 4) if (px2[i] == 0) filled++;
+            Check(filled == 4, "redact: partly-off rectangles are clipped and outside rectangles are ignored");
+            bool shortBuf = false;
+            try { Redaction.FillRectangles(new byte[8], 4, 1, new[] { RectPx.Empty }); } catch (ArgumentException) { shortBuf = true; }
+            Check(shortBuf, "redact: short buffer refused");
         }
 
     }

@@ -25,7 +25,8 @@ internal sealed class SettingsWindow : Window
     private readonly bool? _initialStartAtLogin;
     private readonly CheckBox _toasts = new() { Content = "Show notifications" };
     private readonly CheckBox _contrast = new() { Content = "High-contrast highlight" };
-    private readonly CheckBox _toolKeys = new() { Content = "Single-key tool shortcuts in the editor" };
+    private readonly CheckBox _copyText = new() { Content = "Copy text after capture" };
+    private readonly CheckBox _redact = new() { Content = "Redact sensitive text" };
     private readonly Slider _dim = new() { Minimum = 20, Maximum = 90, MaxWidth = 200, TickFrequency = 10, IsSnapToTickEnabled = false };
     private readonly TextBlock _error = new() { Foreground = TesselTheme.Danger, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
 
@@ -49,7 +50,7 @@ internal sealed class SettingsWindow : Window
         _effect.ItemsSource = AutoEffects.All;
 
         _folder.Text = prefs.OutputFolder; _folder.ToolTip = "Where captures are saved. Empty = your Pictures folder.";
-        _extEditor.Text = prefs.ExternalEditorPath; _extEditor.ToolTip = "Path to an image editor program (for example paint.net or GIMP). The editor window's External editor button opens the saved capture in it. Empty = none.";
+        _extEditor.Text = prefs.ExternalEditorPath; _extEditor.ToolTip = "Path to an image editor program (for example paint.net or GIMP). The viewer's Open in editor button opens the saved capture in it. Empty = none.";
         _ffmpeg.Text = prefs.FfmpegPath; _ffmpeg.ToolTip = "Path to your own ffmpeg.exe, used instead of the bundled FFmpeg for exports. Empty = the bundled copy.";
         _format.SelectedItem = prefs.ImageFormat; _format.ToolTip = "File format for saved captures. PNG and TIFF keep transparency; JPEG, BMP, GIF and PDF drop it. A still GIF is a single frame; interval captures in GIF become one animated file. PDF holds one image, losslessly.";
         _presetRect = prefs.PresetRect;
@@ -92,7 +93,8 @@ internal sealed class SettingsWindow : Window
         AutomationProperties.SetLiveSetting(_error, AutomationLiveSetting.Polite);
         SetError(startupWarning);
         _toasts.IsChecked = prefs.ShowToasts; _toasts.ToolTip = "Show notifications for other tools and errors. Routine screen captures are silent.";
-        _toolKeys.IsChecked = prefs.EditorToolHotkeys; _toolKeys.ToolTip = "P pen, H highlight, A arrow, L connector, R rect, O ellipse, T text, N step, K callout, G stamp, B blur, S spotlight, M magnify, C crop, X cut out. Turn off if letter keys clash with your assistive technology.";
+        _copyText.IsChecked = prefs.CopyTextAfterCapture; _copyText.ToolTip = "Recognise the text in a capture with the built-in Windows OCR (fully offline) and copy it to the clipboard alongside the image. Off is much faster at capture time.";
+        _redact.IsChecked = prefs.RedactAfterCapture; _redact.ToolTip = "Scan the capture's text (offline OCR) for emails, cards, IPs, phone numbers and key-shaped tokens, and cover every match with a black box before it is saved.";
         _contrast.IsChecked = prefs.HighContrastHighlight; _contrast.ToolTip = "Thicker yellow highlight and opaque hint bars.";
         _dim.Value = prefs.DimmerOpacity * 100; _dim.ToolTip = "How dark the screen gets while picking.";
 
@@ -135,7 +137,7 @@ internal sealed class SettingsWindow : Window
         }
 
         var general = new StackPanel();
-        foreach (var toggle in new[] { _startAtLogin, _toasts, _contrast, _toolKeys })
+        foreach (var toggle in new[] { _startAtLogin, _toasts, _contrast })
         {
             toggle.MinHeight = 26;
             toggle.VerticalContentAlignment = VerticalAlignment.Center;
@@ -155,7 +157,8 @@ internal sealed class SettingsWindow : Window
             ("Output folder", _folder), ("Image format", _format), ("Full-screen target", _target),
             ("Default delay (s)", _delay), ("Preset region", _presetInfo), (null, _useLast),
             ("Fixed region width", _fixW), ("Fixed region height", _fixH), ("Interval (seconds)", _interval),
-            ("Gap fill", _matte), ("Dimmer darkness", _dim), ("Auto effect", _effect)));
+            ("Gap fill", _matte), ("Dimmer darkness", _dim), ("Auto effect", _effect),
+            ("Copy text", _copyText), ("Redact sensitive text", _redact)));
         AddSection("Workflows", FormRows(("After capture", _wfCapture), ("After recording", _wfRecording), (null, _wfManage)));
         AddSection("External tools", FormRows(("External editor", _extEditor), ("FFmpeg override", _ffmpeg)));
         var scroll = new ScrollViewer
@@ -248,8 +251,8 @@ internal sealed class SettingsWindow : Window
 
     private void Commit()
     {
-        // Start from a copy of what is stored so settings this window does not edit (effect sizes, recording
-        // options, hotkeys flag, ...) are carried over instead of being reset to defaults.
+        // Start from a copy of what is stored so settings this window does not edit (recording
+        // options, recording workflows, ...) are carried over instead of being reset to defaults.
         var p = _prefs.Clone();
         p.OutputFolder = _folder.Text.Trim();
         p.ImageFormat = (string)_format.SelectedItem;
@@ -266,7 +269,8 @@ internal sealed class SettingsWindow : Window
         p.HighContrastHighlight = _contrast.IsChecked == true;
         p.DimmerOpacity = _dim.Value / 100;
         p.AutoEffect = (string)_effect.SelectedItem;
-        p.EditorToolHotkeys = _toolKeys.IsChecked == true;
+        p.CopyTextAfterCapture = _copyText.IsChecked == true;
+        p.RedactAfterCapture = _redact.IsChecked == true;
         // Per-field validation (owner field report, 2026-11-13): one bad field must
         // never discard the whole save — an invalid entry keeps its previous value
         // and is named in the warning, everything else applies and persists.

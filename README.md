@@ -3,7 +3,7 @@
 Screenshot apps,\
 elements, anything!
 
-Windows screenshot tool with an **element picker**: hover any button, toolbar, pane or window, click, and capture exactly that rectangle. Region, window and full-screen (single monitor or all monitors, mixed DPI) are built in, plus a capture delay and a small annotation editor.
+Windows capture tool with an **element picker**: hover any button, toolbar, pane or window, click, and capture exactly that rectangle. Region, window and full-screen (single monitor or all monitors, mixed DPI) are built in, plus a capture delay, optional capture-time redaction and text copy, and a recording feature. Snipit is purely a capture tool: it does not have an editor. Anything deeper belongs in an external editor you point Settings at.
 
 Offline only. No telemetry, no accounts, no network code.
 
@@ -26,13 +26,15 @@ The installer enables **Start at login** by default. To turn it off, clear **Sta
 | Region | Drag and release to capture. To adjust or combine areas, hold Shift when starting the first drag. Move or resize the staged selection, or press A to keep it and draw another. Click inside the current selection or press Enter to capture. |
 | Freehand | Drag an outline, or click corners for a polygon (click the first point, double-click the last point or press Enter to finish; Backspace undoes) (`H` in the menu); the bounding box is captured. Save as PNG to preserve transparency outside the outline. |
 | Recording | Record a monitor or region to MP4 — system sound and microphone mixed in, optional webcam picture-in-picture, quality presets, time/size limits, one-shot scheduling — or straight to animated GIF. Tray → Record screen…, or `--record`. |
-| Draw on screen | A live annotation overlay (tray item): draw over the screen; the strokes appear in captures and recordings. |
 | Window | Window under cursor, full frame or client area only (`C`). |
 | Full screen | One monitor, all monitors, or a chosen monitor (`1`..`9`). Mixed DPI and L-shaped layouts are stitched 1:1 in physical pixels. |
 | One-shot full screen | From the command line (`--fullscreen`, also `--all` / `--monitor N`): capture straight to clipboard and file, no UI. |
 | Active window | The foreground window, from the menu's Window mode. |
 | Delay | 0 / 3 / 5 / 10 s countdown for menus and tooltips. `Esc` cancels. The countdown chip never appears in the image. |
-| Editor | Pen, highlighter, arrow, connector, rectangle, ellipse, text, step markers, blur (pixelate), crop, undo/redo, copy, save, capture metadata panel — plus Copy text (built-in Windows OCR), one-click Redact of emails, cards, IPs and key-shaped tokens, OCR find & replace text, resize, watermark, brightness/contrast, an optional auto-applied effect, and whole-image invert, grayscale, flip and rotate. Recent captures reopen from the tray menu, and an external editor can be wired up in Settings. |
+| Capture viewer | A thin capture-adjacent surface: shows a recent capture from the tray menu (or the one just taken), its metadata and capture details, and hands it where it belongs — clipboard, file, external editor, Explorer. It does not edit: copy, save and the external-editor button only. |
+| Auto-effect | Optional Border or Grayscale applied to every still capture (baked in, at capture time). |
+| Copy text | Optional: recognise the text in a capture with the built-in Windows OCR and copy it to the clipboard alongside the image. |
+| Redact | Optional: scan the capture's text for emails, cards, IPs, phone numbers and key-shaped tokens, and cover every match with a black box before it is saved. |
 
 Paste a capture into an image-aware app as PNG or bitmap, or paste into a File Explorer folder to copy a JPEG file. JPEGs staged for the clipboard live in the `clipboard` subfolder of Snipit's data directory. Snipit checks for retired files on later clipboard writes and keeps them for at least 24 hours after it first sees that the clipboard no longer references them. The image saved to your output folder uses the format selected in Settings. Successful still captures are silent. If copying fails, Snipit still saves the image.
 

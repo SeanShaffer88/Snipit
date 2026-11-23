@@ -6,7 +6,7 @@ using Snipit.Native;
 
 namespace Snipit;
 
-/// <summary>Drives one capture session through the state machine (§1): pick → delay → capture → edit/export.</summary>
+/// <summary>Drives one capture session through the state machine (§1): pick → delay → capture → bake, clipboard + file.</summary>
 internal sealed class ModeRouter
 {
     private readonly AppStateMachine _sm = new();
@@ -222,42 +222,87 @@ internal sealed class ModeRouter
         await overlays.CloseAndAwaitAsync();
 
         RememberRect(rect);
-        // Captures never open the editor (owner direction, 2026-11-13): clipboard
-        // + file + workflow, always. The editor remains for deliberate opens only
-        // (a past capture from the tray history). The Settings auto-effect, which
-        // the editor used to apply on open, is applied to the capture itself here.
-        var image = ApplyAutoEffect(cap.Image);
-        ImageClipboardResult clipboard = ClipboardWriter.SetImage(image);
+        // Captures never open the viewer (owner direction, 2026-11-13): the capture is
+        // baked, copied and saved, always. The viewer remains for deliberate opens only
+        // (a past capture from the tray history).
+        var (image, text, note) = await ApplyCapturePostProcessAsync(cap.Image);
+        ImageClipboardResult clipboard = ClipboardWriter.SetImage(image, text);
         if (cap.Megapixels > 100) Log.Info($"Large capture ({cap.Megapixels:F0} MP). Saving may be slow.");
 
         _sm.TryTransition(AppState.Exporting);
         string path = Exporter.Save(image, Prefs);
         NotifyClipboardFailure(clipboard, path);
+        if (note is not null) _notify("Snipit", note, path);
         WorkflowRunner.MaybeRun(Prefs, "Capture", path, _notify);
     }
 
-    /// <summary>The Settings auto-effect (Border / Grayscale) applied to a fresh capture. Any failure keeps the original image.</summary>
-    private BitmapSource ApplyAutoEffect(BitmapSource image)
+    /// <summary>The capture pipeline's post-processing — the one place "editing" legitimately happens in a capture tool:
+    /// baked pixels at capture time, never a saved-file editor. Border/grayscale plus, when enabled in Settings, the
+    /// sensitive-text redaction and the recognized text copied to the clipboard (alongside the image). OCR runs at most
+    /// once per capture, and a failure never blocks the capture — the original image is kept.</summary>
+    private async Task<(BitmapSource Image, string? Text, string? Note)> ApplyCapturePostProcessAsync(BitmapSource image)
     {
-        string effect = AutoEffects.Sanitize(Prefs.AutoEffect);
-        if (effect == AutoEffects.Default) return image;
+        var src = image;
+        var effect = AutoEffects.Sanitize(Prefs.AutoEffect);
+        if (effect != AutoEffects.Default)
+        {
+            try
+            {
+                var (px, w, h) = ReadPixels(src);
+                AutoEffects.Apply(px, w, h, effect);
+                src = FreezeBaked(px, w, h);
+            }
+            catch (Exception ex) { Log.Error("Auto effect failed", ex); src = image; }
+        }
+
+        if (!Prefs.CopyTextAfterCapture && !Prefs.RedactAfterCapture) return (src, null, null);
+
+        string? text = null, note = null;
         try
         {
-            var src = image.Format == PixelFormats.Bgra32 ? image : new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0);
-            int w = src.PixelWidth, h = src.PixelHeight, stride = w * 4;
-            var px = new byte[stride * h];
-            src.CopyPixels(px, stride, 0);
-            switch (effect)
+            var (words, error) = await OcrService.RecognizeWordsAsync(src);
+            if (words is null)
             {
-                case "Grayscale": PixelAdjust.Grayscale(px); break;
-                case "Border": PixelAdjust.Border(px, w, h, Math.Max(2, Math.Min(w, h) / 120), 0, 0, 0); break;
-                default: return image;
+                if (error is not null) Log.Warn("Capture-time OCR unavailable: " + error);
+                return (src, null, null);
             }
-            var bmp = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, px, stride);
-            bmp.Freeze();
-            return bmp;
+            if (Prefs.CopyTextAfterCapture)
+            {
+                var assembled = OcrText.Assemble(words);
+                text = assembled.Length == 0 ? null : assembled;
+            }
+            if (Prefs.RedactAfterCapture)
+            {
+                var hits = Redactor.Find(words);
+                if (hits.Count > 0)
+                {
+                    var (px, w, h) = ReadPixels(src);
+                    Redaction.FillRectangles(px, w, h, hits.Select(h => h.Rect).ToList());
+                    src = FreezeBaked(px, w, h);
+                    note = $"Redacted {hits.Count} item(s): {string.Join(", ", hits.GroupBy(h => h.Kind).Select(g => $"{g.Count()} {g.Key}"))}";
+                    // A capture flagged with sensitive text does not put that text on the clipboard.
+                    text = null;
+                }
+            }
         }
-        catch (Exception ex) { Log.Error("Auto effect failed", ex); return image; }
+        catch (Exception ex) { Log.Error("Capture-time OCR failed", ex); }
+        return (src, text, note);
+    }
+
+    private static (byte[] Pixels, int Width, int Height) ReadPixels(BitmapSource image)
+    {
+        var src = image.Format == PixelFormats.Bgra32 ? image : new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0);
+        int w = src.PixelWidth, h = src.PixelHeight, stride = w * 4;
+        var px = new byte[stride * h];
+        src.CopyPixels(px, stride, 0);
+        return (px, w, h);
+    }
+
+    private static BitmapSource FreezeBaked(byte[] px, int w, int h)
+    {
+        var bmp = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, px, w * 4);
+        bmp.Freeze();
+        return bmp;
     }
 
     /// <summary>
@@ -432,11 +477,13 @@ internal sealed class ModeRouter
 
             var cap = CaptureEngine.Capture(rect, monitors, Prefs.MatteArgb);
             RememberRect(rect);
-            ImageClipboardResult clipboard = ClipboardWriter.SetImage(cap.Image);
+            var (image, text, note) = await ApplyCapturePostProcessAsync(cap.Image);
+            ImageClipboardResult clipboard = ClipboardWriter.SetImage(image, text);
 
             _sm.TryTransition(AppState.Exporting);
-            string path = Exporter.Save(cap.Image, Prefs);
+            string path = Exporter.Save(image, Prefs);
             NotifyClipboardFailure(clipboard, path);
+            if (note is not null) _notify("Snipit", note, path);
             WorkflowRunner.MaybeRun(Prefs, "Capture", path, _notify);
         }
         catch (Exception ex)
