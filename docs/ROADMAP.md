@@ -36,7 +36,7 @@ Blueprint v2 shipped in v0.1 with element, region, window and full-screen captur
 | Silent snips | ✅ v0.28.3. Successful still captures are silent. Save and clipboard failures can still alert when notifications are enabled. |
 | Dark Settings and capture mode bar | ✅ TesselGUI revision 3, with a movable capture bar since v0.14. v0.28.3 groups related Settings controls in a scrollable window with Save and Cancel always visible. |
 | Multiple-area capture | ✅ v0.19. In Region mode, press A to save up to 16 rectangles, then Enter to combine the selected areas into one image. |
-| Hand Print Screen back automatically on uninstall | ❓ Requires an uninstall hook in SeanPak. Writing the setting at install time would change the user's Print Screen behavior. |
+| Hand Print Screen back automatically on uninstall | ❓ Requires an uninstall hook in the installer. Writing the setting at install time would change the user's Print Screen behavior. |
 | Freehand and polygon capture | ✅ Drag to draw freehand or click vertices to draw a polygon (v0.27.0). Save as PNG to preserve transparency outside the outline. |
 | Scrolling capture | ✅ v0.5.0. Uses UI Automation ScrollPattern where available, with a wheel-and-stitch fallback. |
 | Capture backend | ✅ Windows Graphics Capture for stills, with a GDI fallback |

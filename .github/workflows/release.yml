@@ -1,8 +1,9 @@
 name: Release
 
 # Tag-triggered release: build + self-test, publish the app self-contained,
-# package with SeanPak (the standing packager for all of SEAN's Windows
-# programs), and attach the three assets to the GitHub Release.
+# package it with Inno Setup (the standing packager for Snipit — per-user,
+# x64, desktop/start-menu shortcuts + Start at login), and attach the three
+# assets to the GitHub Release.
 # Release notes are this version's own CHANGELOG.md section, nothing else.
 
 on:
@@ -44,35 +45,31 @@ jobs:
           Copy-Item ffmpeg-bundle/*/LICENSE.txt dist/files/ffmpeg/
           Copy-Item THIRD-PARTY-NOTICES.md dist/files/
 
-      - name: Check out SeanPak
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          repository: SeanShaffer88/SeanPak
-          ref: 58f33591b8e63bf999c2744446e5287acc30ad35   # pinned; bump on purpose when SeanPak changes
-          path: .seanpak
-
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Build SeanPak
-        shell: bash
-        working-directory: .seanpak
-        env:
-          RUSTFLAGS: "-C target-feature=+crt-static"
-        run: cargo build --release --target x86_64-pc-windows-msvc
-
-      - name: Pack with SeanPak
-        shell: bash
-        run: |
-          SP=.seanpak/target/x86_64-pc-windows-msvc/release/seanpak.exe
-          "$SP" validate seanpak.json
-          "$SP" pack seanpak.json dist/files --out-dir dist-seanpak --json
-          "$SP" verify dist-seanpak/*-Setup.exe --json
-
-      - name: Compress the portable ZIP
+      - name: Install Inno Setup
         shell: pwsh
-        run: ./tools/Compress-PortableZip.ps1 -PackageDirectory dist-seanpak
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build the installer (Inno Setup)
+        shell: pwsh
+        run: & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
+      - name: Compress the portable ZIP (Deflate, same payload)
+        shell: pwsh
+        run: |
+          $zip = "dist-installer/Snipit-0.29.0-Portable.zip"
+          Compress-Archive -Path "dist/files/*" -DestinationPath $zip -CompressionLevel Optimal -Force
+          $entries = ([System.IO.Compression.ZipFile]::OpenRead($zip)).Entries
+          if ($entries.Count -lt 50) { throw "Portable ZIP has too few entries ($($entries.Count))" }
+          Write-Host "Portable ZIP contains $($entries.Count) entries, $((Get-Item $zip).Length) bytes"
+
+      - name: SHA256SUMS.txt
+        shell: pwsh
+        run: |
+          $lines = @()
+          Get-ChildItem dist-installer -Filter *-Setup.exe | Sort-Object Name | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } | ForEach-Object { $lines += $_ }
+          Get-ChildItem dist-installer -Filter *-Portable.zip | Sort-Object Name | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } | ForEach-Object { $lines += $_ }
+          $lines | Set-Content dist-installer/SHA256SUMS.txt -Encoding ascii
+          Get-Content dist-installer/SHA256SUMS.txt
 
       - name: Extract release notes (this version's CHANGELOG section only)
         shell: bash
@@ -81,11 +78,11 @@ jobs:
           awk -v v="$ver" '$0 ~ "^## \\[" v "\\]" {f=1; next} /^## \[/ {f=0} f' CHANGELOG.md > release-notes.md
           test -s release-notes.md
 
-      - name: Create GitHub Release with the SeanPak assets
+      - name: Create GitHub Release with the installer assets
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           body_path: release-notes.md
           files: |
-            dist-seanpak/*-Setup.exe
-            dist-seanpak/*-Portable.zip
-            dist-seanpak/SHA256SUMS.txt
+            dist-installer/*-Setup.exe
+            dist-installer/*-Portable.zip
+            dist-installer/SHA256SUMS.txt

@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - Everything worth keeping moved into the capture pipeline itself: the optional Border/Grayscale auto-effect is baked into every still capture at capture time, and an optional post-capture pass can recognise the text in the image (built-in offline Windows OCR) and copy it to the clipboard alongside the image, or scan it for emails, cards, IPs, phone numbers and key-shaped tokens and cover every match with black boxes before it is saved. Both are off by default in Settings and never block the capture when they fail.
 - Settings: the editor tool-shortcuts toggle and the Frame/Shadow/Edge-depth controls are gone. New toggles: **Copy text** and **Redact sensitive text**.
 - The Draw-on-screen overlay (live pen strokes captured into captures and recordings) was removed — live annotation does not belong on a capture-only product; baked pixels at capture time are the only visual effects.
+- The release packager is now [Inno Setup](https://jrsoftware.org/isinfo.php) (per-user, x64): the release workflow no longer builds SeanPak (which is unavailable). The installer is `installer.iss`; the portable ZIP is compressed with Deflate in the same workflow. The installer writes the same HKCU startup entries the app already reads (`Uninstall\Snipit` with `InstallLocation`, plus the `Run` key the Start at login toggle owns).
 
 ## [0.28.4] - 2026-11-23
 

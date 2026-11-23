@@ -23,7 +23,7 @@ review does not pretend otherwise.
   packages**, zero network/telemetry, Windows 10 1809+, warnings-as-errors,
   pure logic in `SharpSnip.Core` tested anywhere, Windows glue in
   `SharpSnip.App`. Releases (when authorised) follow the portfolio rule:
-  packaged with SeanPak, one Setup.exe + one Portable.zip + SHA256SUMS.txt.
+  packaged with Inno Setup, one Setup.exe + one Portable.zip + SHA256SUMS.txt.
 
 ## Where it stands — evidence
 

@@ -13,7 +13,7 @@ Offline only. No telemetry, no accounts, no network code.
 
 ## Uninstalling and Print Screen
 
-While Snipit runs it switches off Windows' "Print Screen opens Snipping Tool" setting, and it hands the setting back when it exits, crashes or you log off. If Snipit was killed hard (power loss, Task Manager) the setting can stay off. **Before you uninstall, exit Snipit from its tray menu; if it was killed, run `Snipit.exe --restore-printscreen` first.** The SeanPak installer has no uninstall hook yet, so uninstalling cannot do this for you.
+While Snipit runs it switches off Windows' "Print Screen opens Snipping Tool" setting, and it hands the setting back when it exits, crashes or you log off. If Snipit was killed hard (power loss, Task Manager) the setting can stay off. **Before you uninstall, exit Snipit from its tray menu; if it was killed, run `Snipit.exe --restore-printscreen` first.** The Snipit installer has no uninstall hook yet, so uninstalling cannot do this for you.
 
 **Windows field test (v0.16.0).** Sean tested the installer and portable build, verified the live UI and Print Screen behavior, and confirmed that SharpSnip settings carried over and uninstall cleaned up the installed build. [Full test results](CHANGELOG.md#windows-field-verification)
 
@@ -58,7 +58,7 @@ Output folder, format (PNG/JPEG/BMP/GIF/TIFF/PDF), delay and more are in tray â†
 
 ### Switching from SharpSnip
 
-Close SharpSnip before opening Snipit. SeanPak installs Snipit as a separate app, so remove the old entry separately when you are ready. Before uninstalling an old copy with an outstanding Print Screen override, use its `--restore-printscreen` option. Update scripts and shortcuts to use `Snipit.exe`. Historical tags and downloads through v0.15.0 keep the SharpSnip name.
+Close SharpSnip before opening Snipit. The Snipit installer installs Snipit as a separate app, so remove the old entry separately when you are ready. Before uninstalling an old copy with an outstanding Print Screen override, use its `--restore-printscreen` option. Update scripts and shortcuts to use `Snipit.exe`. Historical tags and downloads through v0.15.0 keep the SharpSnip name.
 
 `Snipit.exe --clean` deletes settings and logs in the selected data directory. That includes the old `%APPDATA%\SharpSnip` directory when Snipit uses it.
 
